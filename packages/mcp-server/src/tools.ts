@@ -1,7 +1,9 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
+  DownloadAssetsResult,
   GetAssetsResult,
   GetScreenshotResult,
+  OfficialToolAlias,
   TempadMcpErrorCode,
   ToolName,
   ToolResponseLike,
@@ -11,7 +13,11 @@ import type {
 import type { ZodType } from 'zod'
 
 import {
+  DownloadAssetsParametersSchema,
+  MCP_DOWNLOAD_ASSETS_MAX_NODES,
   MCP_TOOL_INLINE_BUDGET_BYTES,
+  OFFICIAL_TOOL_ALIASES,
+  buildDownloadAssetsToolResult,
   buildGetAssetsToolResult,
   buildGetCodeToolResult,
   buildGetScreenshotToolResult,
@@ -30,6 +36,8 @@ import {
 
 export type {
   AssetDescriptor,
+  DownloadAssetsParametersInput,
+  DownloadAssetsResult,
   GetAssetsParametersInput,
   GetAssetsResult,
   GetCodeParametersInput,
@@ -40,6 +48,7 @@ export type {
   GetStructureResult,
   GetTokenDefsParametersInput,
   GetTokenDefsResult,
+  OfficialToolAlias,
   TokenEntry,
   ToolName,
   ToolResultMap,
@@ -120,20 +129,18 @@ export const TOOL_DEFS = [
   extTool({
     name: 'get_token_defs',
     description:
-      'Resolve canonical token names to literal values (optionally including all modes) for tokens referenced by get_code.',
+      'Resolve design tokens (Figma variables/styles) to literal values, optionally including all modes. Pass names to resolve specific canonical token names referenced by get_code; omit names to resolve every token used by nodeId/the current single selection.',
     parameters: GetTokenDefsParametersSchema,
     target: 'extension',
-    format: createTokenDefsToolResponse,
-    exposed: false
+    format: createTokenDefsToolResponse
   }),
   extTool({
     name: 'get_screenshot',
     description:
-      'Capture a rendered PNG screenshot for nodeId/current single selection for visual verification (layering/overlap/masks/effects).',
+      'Capture a rendered PNG screenshot for nodeId/current single selection for visual verification (layering/overlap/masks/effects). The PNG is returned as an asset URL, not inline base64. Use download_assets for multiple nodes, non-PNG formats, or the original uploaded source images.',
     parameters: GetScreenshotParametersSchema,
     target: 'extension',
-    format: createScreenshotToolResponse,
-    exposed: false
+    format: createScreenshotToolResponse
   }),
   extTool({
     name: 'get_structure',
@@ -143,16 +150,58 @@ export const TOOL_DEFS = [
     target: 'extension',
     format: createStructureToolResponse
   }),
+  extTool({
+    name: 'download_assets',
+    description:
+      `Download assets for nodeIds/current single selection (up to ${MCP_DOWNLOAD_ASSETS_MAX_NODES} nodes). Every call returns both kinds of output: ` +
+      '`exports` (each node rendered with its Figma export settings, or defaultFormat/defaultScale when it has none) and ' +
+      '`rawImages` (the original uploaded JPEG/PNG/GIF/WebP files placed as fills anywhere in the requested subtrees, returned without re-rendering). ' +
+      'Raw source images are capped per call; when `rawImagesTruncated` is true, request a more specific child node to reach the rest. Download bytes from each asset.url.',
+    parameters: DownloadAssetsParametersSchema,
+    target: 'extension',
+    format: createDownloadAssetsToolResponse
+  }),
   hubTool({
     name: 'get_assets',
     description:
       'Resolve asset hashes to downloadable URLs and metadata for assets referenced by tool responses. SVG asset metadata may include `themeable=true` when the underlying vector can safely adopt one contextual color channel.',
     parameters: GetAssetsParametersSchema,
     target: 'hub',
-    outputSchema: GetAssetsResultSchema,
-    exposed: false
+    outputSchema: GetAssetsResultSchema
   })
 ] as const
+
+/**
+ * Official Figma MCP tool names exposed alongside the TemPad names. Each alias registers
+ * under the official name and forwards to the TemPad tool that implements it, so community
+ * skills and agents keep working against this read-only pipeline.
+ */
+const ALIAS_DESCRIPTIONS: Record<OfficialToolAlias, string> = {
+  get_design_context:
+    'Official Figma MCP name for `get_code`: returns the design context (markup + styles, assets and token metadata) for nodeId/current single selection. Identical behavior and parameters as `get_code`.',
+  get_metadata:
+    'Official Figma MCP name for `get_structure`: returns a sparse outline of nodeId/current single selection (layer ids, names, types, positions and sizes) to plan narrower follow-up calls. Identical behavior and parameters as `get_structure`.',
+  get_variable_defs:
+    'Official Figma MCP name for `get_token_defs`: returns the variables/styles used by nodeId/the current single selection. Pass names to resolve specific canonical token names instead. Identical behavior and parameters as `get_token_defs`.'
+}
+
+export type ToolAliasDefinition = {
+  name: OfficialToolAlias
+  canonical: ToolName
+  description: string
+}
+
+export const TOOL_ALIAS_DEFS: readonly ToolAliasDefinition[] = Object.entries(
+  ALIAS_DESCRIPTIONS
+).map(([name, description]) => ({
+  name: name as OfficialToolAlias,
+  canonical: OFFICIAL_TOOL_ALIASES[name as OfficialToolAlias],
+  description
+}))
+
+export function getToolAliases(canonical: ToolName): readonly ToolAliasDefinition[] {
+  return TOOL_ALIAS_DEFS.filter((alias) => alias.canonical === canonical)
+}
 
 function extractToolErrorCode(error: unknown): TempadMcpErrorCode | undefined {
   const code = getRecordProperty(error, 'code')
@@ -263,6 +312,22 @@ export function createScreenshotToolResponse(
   return toCallToolResult(buildGetScreenshotToolResult(payload))
 }
 
+export function createDownloadAssetsToolResponse(
+  payload: ToolResultMap['download_assets']
+): CallToolResult {
+  if (!isDownloadAssetsResult(payload)) {
+    throw new Error('Invalid download_assets payload received from extension.')
+  }
+
+  return toCallToolResult(buildDownloadAssetsToolResult(payload))
+}
+
+function isDownloadAssetsResult(payload: unknown): payload is DownloadAssetsResult {
+  if (typeof payload !== 'object' || !payload) return false
+  const candidate = payload as Partial<DownloadAssetsResult & Record<string, unknown>>
+  return Array.isArray(candidate.exports) && Array.isArray(candidate.rawImages)
+}
+
 function isScreenshotResult(payload: unknown): payload is GetScreenshotResult {
   if (typeof payload !== 'object' || !payload) return false
   const candidate = payload as Partial<GetScreenshotResult & Record<string, unknown>>
@@ -361,6 +426,8 @@ function getBudgetRetryGuidance(toolName: ToolName): string {
       return 'Reduce requested names or split them into smaller batches and retry.'
     case 'get_screenshot':
       return 'Reduce selection size or scale and retry.'
+    case 'download_assets':
+      return 'Request fewer nodeIds in a single call and retry.'
     case 'get_assets':
       return 'Request fewer hashes in a single call and retry.'
     default:

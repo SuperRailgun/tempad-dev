@@ -13,6 +13,8 @@ import { formatHexAlpha, normalizeCssValue } from '@/utils/css'
 import { logger } from '@/utils/log'
 
 import { currentCodegenConfig } from '../config'
+import { getVariableByIdCached } from './cache'
+import { collectCandidateVariableIds } from './candidates'
 import { canonicalizeName, canonicalizeNames, getTokenIndex, getVariableRawName } from './indexer'
 
 type TokenModeValue = {
@@ -46,6 +48,49 @@ export async function handleGetTokenDefs(
   const requested = new Set(names.map((n) => (n.startsWith('--') ? n : `--${n}`)))
   const tokens = await resolveTokenDefsByNames(requested, config, pluginCode, { includeAllModes })
 
+  return assertWithinInlineBudget(tokens)
+}
+
+/**
+ * Resolve every token referenced by the given subtrees, mirroring the official
+ * `get_variable_defs` semantics (variables used in a selection).
+ */
+export async function handleGetTokenDefsForNodes(
+  roots: SceneNode[],
+  includeAllModes = false
+): Promise<GetTokenDefsResult> {
+  const config = currentCodegenConfig()
+  const pluginCode = activePlugin.value?.code
+
+  const { variableIds } = collectCandidateVariableIds(roots)
+  if (!variableIds.size) return {}
+
+  const variables = Array.from(variableIds)
+    .map((id) => getVariableByIdCached(id))
+    .filter((variable): variable is Variable => !!variable)
+
+  const rawNames = variables.map((variable) => getVariableRawName(variable))
+  const canonicalNames = await canonicalizeNames(rawNames, config, pluginCode)
+
+  const requested = new Set<string>()
+  const candidateNameById = new Map<string, string>()
+  variables.forEach((variable, index) => {
+    const canonical = canonicalNames[index]
+    if (!canonical) return
+    requested.add(canonical)
+    candidateNameById.set(variable.id, canonical)
+  })
+
+  const tokens = await resolveTokenDefsByNames(requested, config, pluginCode, {
+    includeAllModes,
+    candidateIds: variableIds,
+    candidateNameById
+  })
+
+  return assertWithinInlineBudget(tokens)
+}
+
+function assertWithinInlineBudget(tokens: GetTokenDefsResult): GetTokenDefsResult {
   const resultBytes = measureCallToolResultBytes(buildGetTokenDefsToolResult(tokens))
   if (resultBytes > MCP_TOOL_INLINE_BUDGET_BYTES) {
     throw new Error(

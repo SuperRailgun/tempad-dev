@@ -4,6 +4,7 @@ import type { ToolResponseLike } from '../../src/mcp/responses'
 import type { ToolResultMap } from '../../src/mcp/tools'
 
 import {
+  buildDownloadAssetsToolResult,
   buildGetCodeToolResult,
   buildGetStructureToolResult,
   buildGetTokenDefsToolResult,
@@ -69,5 +70,56 @@ describe('mcp/responses helpers', () => {
       }
     })
     expect(tokens.content?.[0]?.text).toContain('Resolved 1 token definition')
+  })
+
+  it('summarizes download_assets exports, raw images and truncation', () => {
+    const payload: ToolResultMap['download_assets'] = {
+      exports: [
+        {
+          hash: 'deadbeef',
+          url: 'https://assets.local/deadbeef.png',
+          mimeType: 'image/png',
+          size: 512,
+          nodeId: '1:2',
+          nodeName: 'Hero',
+          kind: 'export',
+          format: 'png',
+          scale: 2,
+          fromExportSettings: false
+        }
+      ],
+      rawImages: [
+        {
+          hash: 'beefcafe',
+          url: 'https://assets.local/beefcafe.jpg',
+          mimeType: 'image/jpeg',
+          size: 1024,
+          figmaImageHash: 'figma-hash',
+          nodeIds: ['1:3'],
+          source: 'raw'
+        }
+      ],
+      rawImagesTruncated: true,
+      warnings: ['Failed to export node 1:9 as pdf: boom']
+    }
+
+    const result = buildDownloadAssetsToolResult(payload)
+    const text = result.content?.[0]?.text ?? ''
+
+    expect(result.structuredContent).toEqual(payload)
+    expect(text).toContain('Export renders: 1 asset.')
+    expect(text).toContain('Raw source images: 1 asset.')
+    expect(text).toContain('Raw source images were truncated.')
+    expect(text).toContain('Failed to export node 1:9 as pdf: boom')
+    expect(text).toContain('Download bytes from each asset.url.')
+  })
+
+  it('summarizes empty download_assets responses', () => {
+    const result = buildDownloadAssetsToolResult({ exports: [], rawImages: [] })
+    const text = result.content?.[0]?.text ?? ''
+
+    expect(text).toContain('No export renders were produced.')
+    expect(text).toContain('No raw source images were found')
+    expect(text).not.toContain('truncated')
   })
 })

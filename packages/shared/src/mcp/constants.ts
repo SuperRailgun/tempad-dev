@@ -24,3 +24,13 @@ export const MCP_ASSET_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 export const MCP_HASH_HEX_LENGTH = 8
 export const MCP_HASH_PATTERN = new RegExp(`^[a-f0-9]{${MCP_HASH_HEX_LENGTH}}$`, 'i')
+
+// Maximum nodes accepted by a single download_assets call (matches the official Figma MCP limit).
+export const MCP_DOWNLOAD_ASSETS_MAX_NODES = 20
+// Maximum distinct raw source images returned by a single download_assets call.
+export const MCP_DOWNLOAD_ASSETS_MAX_RAW_IMAGES = 20
+// Default export scale used when a node has no export settings.
+export const MCP_DOWNLOAD_ASSETS_DEFAULT_SCALE = 1
+// Scale bounds accepted by download_assets (matches the official Figma MCP range).
+export const MCP_DOWNLOAD_ASSETS_MIN_SCALE = 0.01
+export const MCP_DOWNLOAD_ASSETS_MAX_SCALE = 4

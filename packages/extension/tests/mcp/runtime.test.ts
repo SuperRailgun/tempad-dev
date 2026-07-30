@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({
   selection: {
     value: [] as Array<{ visible: boolean }>
   },
+  runDownloadAssets: vi.fn(),
   runGetCode: vi.fn(),
   runGetScreenshot: vi.fn(),
   runGetStructure: vi.fn(),
-  runGetTokenDefs: vi.fn()
+  runGetTokenDefs: vi.fn(),
+  runGetTokenDefsForNodes: vi.fn()
 }))
 
 vi.mock('@/ui/state', () => ({
@@ -28,7 +30,12 @@ vi.mock('@/mcp/tools/structure', () => ({
 }))
 
 vi.mock('@/mcp/tools/token', () => ({
-  handleGetTokenDefs: mocks.runGetTokenDefs
+  handleGetTokenDefs: mocks.runGetTokenDefs,
+  handleGetTokenDefsForNodes: mocks.runGetTokenDefsForNodes
+}))
+
+vi.mock('@/mcp/tools/download-assets', () => ({
+  handleDownloadAssets: mocks.runDownloadAssets
 }))
 
 function createSceneNode(id: string, visible = true): SceneNode {
@@ -66,7 +73,8 @@ describe('mcp/runtime', () => {
       'get_code',
       'get_token_defs',
       'get_screenshot',
-      'get_structure'
+      'get_structure',
+      'download_assets'
     ])
     expect(typeof (globalThis as { window?: unknown }).window).toBe('undefined')
   }, 15000)
@@ -84,6 +92,7 @@ describe('mcp/runtime', () => {
     expect(tools.get_token_defs).toBe(runtime.MCP_TOOL_HANDLERS.get_token_defs)
     expect(tools.get_screenshot).toBe(runtime.MCP_TOOL_HANDLERS.get_screenshot)
     expect(tools.get_structure).toBe(runtime.MCP_TOOL_HANDLERS.get_structure)
+    expect(tools.download_assets).toBe(runtime.MCP_TOOL_HANDLERS.download_assets)
   }, 15000)
 
   it('initializes window.tempadTools when window exists without existing tools', async () => {
@@ -220,15 +229,88 @@ describe('mcp/runtime', () => {
     mocks.runGetTokenDefs.mockResolvedValue({ defs: [] })
     const runtime = await importRuntime()
 
-    await expect(runtime.MCP_TOOL_HANDLERS.get_token_defs()).rejects.toThrow(
-      'names is required and must include at least one canonical token name.'
-    )
-
     await runtime.MCP_TOOL_HANDLERS.get_token_defs({
       names: ['color-primary'],
       includeAllModes: true
     })
     expect(mocks.runGetTokenDefs).toHaveBeenCalledWith(['color-primary'], true)
+  })
+
+  it('resolves node-scoped token defs when names are omitted', async () => {
+    const node = createSceneNode('node-3')
+    setFigmaGetNodeById(node)
+    mocks.selection.value = [node]
+    mocks.runGetTokenDefsForNodes.mockResolvedValue({})
+
+    const runtime = await importRuntime()
+
+    await runtime.MCP_TOOL_HANDLERS.get_token_defs()
+    expect(mocks.runGetTokenDefsForNodes).toHaveBeenCalledWith([node], undefined)
+
+    await runtime.MCP_TOOL_HANDLERS.get_token_defs({ nodeId: 'node-3', includeAllModes: true })
+    expect(mocks.runGetTokenDefsForNodes).toHaveBeenLastCalledWith([node], true)
+    expect(mocks.runGetTokenDefs).not.toHaveBeenCalled()
+  })
+
+  it('routes official Figma MCP tool names to their TemPad implementations', async () => {
+    const node = createSceneNode('node-alias')
+    setFigmaGetNodeById(node)
+    mocks.runGetCode.mockResolvedValue({ blocks: [] })
+    mocks.runGetStructure.mockResolvedValue({ roots: [] })
+    mocks.runGetTokenDefsForNodes.mockResolvedValue({})
+
+    const runtime = await importRuntime()
+
+    await runtime.runMcpTool('get_design_context', { nodeId: 'node-alias' })
+    expect(mocks.runGetCode).toHaveBeenCalledWith(
+      [node],
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    )
+
+    await runtime.runMcpTool('get_metadata', { nodeId: 'node-alias' })
+    expect(mocks.runGetStructure).toHaveBeenCalledWith([node], undefined)
+
+    await runtime.runMcpTool('get_variable_defs', { nodeId: 'node-alias' })
+    expect(mocks.runGetTokenDefsForNodes).toHaveBeenCalledWith([node], undefined)
+  })
+
+  it('routes download_assets with resolved nodes and export defaults', async () => {
+    const node = createSceneNode('node-4')
+    setFigmaGetNodeById(node)
+    mocks.selection.value = [node]
+    mocks.runDownloadAssets.mockResolvedValue({ exports: [], rawImages: [] })
+
+    const runtime = await importRuntime()
+
+    await runtime.MCP_TOOL_HANDLERS.download_assets({
+      nodeIds: ['node-4', 'node-4'],
+      defaultFormat: 'svg',
+      defaultScale: 2
+    })
+    expect(mocks.runDownloadAssets).toHaveBeenCalledWith([node], {
+      defaultFormat: 'svg',
+      defaultScale: 2
+    })
+
+    await runtime.MCP_TOOL_HANDLERS.download_assets()
+    expect(mocks.runDownloadAssets).toHaveBeenLastCalledWith([node], {
+      defaultFormat: undefined,
+      defaultScale: undefined
+    })
+  })
+
+  it('rejects download_assets requests above the node limit', async () => {
+    setFigmaGetNodeById(null)
+    const runtime = await importRuntime()
+
+    await expect(
+      runtime.MCP_TOOL_HANDLERS.download_assets({
+        nodeIds: Array.from({ length: 21 }, (_, index) => `node-${index}`)
+      })
+    ).rejects.toThrow('Too many nodeIds requested (21). Limit is 20.')
   })
 
   it('routes screenshot and structure calls with node resolution and depth options', async () => {

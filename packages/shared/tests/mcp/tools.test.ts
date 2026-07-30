@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import {
   AssetDescriptorSchema,
+  DownloadAssetsParametersSchema,
   GetAssetsParametersSchema,
   GetAssetsResultSchema,
   GetCodeParametersSchema,
   GetScreenshotParametersSchema,
   GetStructureParametersSchema,
-  GetTokenDefsParametersSchema
+  GetTokenDefsParametersSchema,
+  isOfficialToolAlias,
+  OFFICIAL_TOOL_ALIASES,
+  resolveOfficialToolAlias
 } from '../../src/mcp/tools'
 
 describe('mcp/tools AssetDescriptorSchema', () => {
@@ -89,6 +93,34 @@ describe('mcp/tools parameter schemas', () => {
     ).toBe(false)
   })
 
+  it('accepts node-scoped token defs requests without names', () => {
+    expect(GetTokenDefsParametersSchema.safeParse({}).success).toBe(true)
+    expect(
+      GetTokenDefsParametersSchema.safeParse({ nodeId: '1:2', includeAllModes: true }).success
+    ).toBe(true)
+  })
+
+  it('validates download_assets node limits, formats and scale bounds', () => {
+    expect(DownloadAssetsParametersSchema.safeParse({}).success).toBe(true)
+    expect(
+      DownloadAssetsParametersSchema.safeParse({
+        nodeIds: ['1:2', '3:4'],
+        defaultFormat: 'svg',
+        defaultScale: 2
+      }).success
+    ).toBe(true)
+
+    expect(DownloadAssetsParametersSchema.safeParse({ nodeIds: [] }).success).toBe(false)
+    expect(
+      DownloadAssetsParametersSchema.safeParse({
+        nodeIds: Array.from({ length: 21 }, (_, index) => `1:${index}`)
+      }).success
+    ).toBe(false)
+    expect(DownloadAssetsParametersSchema.safeParse({ defaultFormat: 'webp' }).success).toBe(false)
+    expect(DownloadAssetsParametersSchema.safeParse({ defaultScale: 0 }).success).toBe(false)
+    expect(DownloadAssetsParametersSchema.safeParse({ defaultScale: 5 }).success).toBe(false)
+  })
+
   it('accepts empty screenshot params and optional structure depth', () => {
     expect(GetScreenshotParametersSchema.safeParse({}).success).toBe(true)
     expect(GetScreenshotParametersSchema.safeParse({ nodeId: '9:99' }).success).toBe(true)
@@ -136,5 +168,26 @@ describe('mcp/tools parameter schemas', () => {
     expect(GetAssetsResultSchema.safeParse({ assets: [], missing: ['not-a-hash'] }).success).toBe(
       false
     )
+  })
+})
+
+describe('mcp/tools official aliases', () => {
+  it('maps official Figma MCP names onto TemPad tools', () => {
+    expect(OFFICIAL_TOOL_ALIASES).toEqual({
+      get_design_context: 'get_code',
+      get_metadata: 'get_structure',
+      get_variable_defs: 'get_token_defs'
+    })
+  })
+
+  it('recognizes and resolves aliases, passing other names through', () => {
+    expect(isOfficialToolAlias('get_design_context')).toBe(true)
+    expect(isOfficialToolAlias('get_code')).toBe(false)
+    expect(isOfficialToolAlias('toString')).toBe(false)
+
+    expect(resolveOfficialToolAlias('get_metadata')).toBe('get_structure')
+    expect(resolveOfficialToolAlias('get_variable_defs')).toBe('get_token_defs')
+    expect(resolveOfficialToolAlias('get_code')).toBe('get_code')
+    expect(resolveOfficialToolAlias('download_assets')).toBe('download_assets')
   })
 })

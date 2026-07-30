@@ -1,4 +1,6 @@
 import type {
+  DownloadAssetsParametersInput,
+  DownloadAssetsResult,
   GetCodeParametersInput,
   GetCodeResult,
   GetScreenshotParametersInput,
@@ -9,7 +11,11 @@ import type {
   GetTokenDefsResult
 } from '@tempad-dev/shared'
 
-import { TEMPAD_MCP_ERROR_CODES } from '@tempad-dev/shared'
+import {
+  MCP_DOWNLOAD_ASSETS_MAX_NODES,
+  TEMPAD_MCP_ERROR_CODES,
+  resolveOfficialToolAlias
+} from '@tempad-dev/shared'
 
 import { selection } from '@/ui/state'
 
@@ -17,9 +23,13 @@ import type { GetCodeRuntimeOptions } from './tools/code'
 
 import { createCodedError } from './errors'
 import { handleGetCode as runGetCode } from './tools/code'
+import { handleDownloadAssets as runDownloadAssets } from './tools/download-assets'
 import { handleGetScreenshot as runGetScreenshot } from './tools/screenshot'
 import { handleGetStructure as runGetStructure } from './tools/structure'
-import { handleGetTokenDefs as runGetTokenDefs } from './tools/token'
+import {
+  handleGetTokenDefs as runGetTokenDefs,
+  handleGetTokenDefsForNodes as runGetTokenDefsForNodes
+} from './tools/token'
 
 function isSceneNode(node: BaseNode | null): node is SceneNode {
   return !!node && 'visible' in node && 'type' in node
@@ -47,6 +57,21 @@ function resolveSingleNode(nodeId?: string): SceneNode {
   return selection.value[0]
 }
 
+function resolveNodes(nodeIds?: string[]): SceneNode[] {
+  if (!nodeIds?.length) {
+    return [resolveSingleNode()]
+  }
+
+  if (nodeIds.length > MCP_DOWNLOAD_ASSETS_MAX_NODES) {
+    throw new Error(
+      `Too many nodeIds requested (${nodeIds.length}). Limit is ${MCP_DOWNLOAD_ASSETS_MAX_NODES}.`
+    )
+  }
+
+  const unique = Array.from(new Set(nodeIds))
+  return unique.map((nodeId) => resolveSingleNode(nodeId))
+}
+
 async function handleGetCode(args?: GetCodeParametersInput): Promise<GetCodeResult> {
   return dispatchGetCode(args)
 }
@@ -72,9 +97,10 @@ async function handleWindowGetCode(args?: WindowGetCodeParametersInput): Promise
 }
 
 async function handleGetTokenDefs(args?: GetTokenDefsParametersInput): Promise<GetTokenDefsResult> {
-  const { names, includeAllModes } = args ?? {}
+  const { names, nodeId, includeAllModes } = args ?? {}
   if (!names?.length) {
-    throw new Error('names is required and must include at least one canonical token name.')
+    const node = resolveSingleNode(nodeId)
+    return runGetTokenDefsForNodes([node], includeAllModes)
   }
   return runGetTokenDefs(names, includeAllModes)
 }
@@ -93,11 +119,20 @@ async function handleGetStructure(args?: GetStructureParametersInput): Promise<G
   return runGetStructure([root], depth)
 }
 
+async function handleDownloadAssets(
+  args?: DownloadAssetsParametersInput
+): Promise<DownloadAssetsResult> {
+  const { nodeIds, defaultFormat, defaultScale } = args ?? {}
+  const nodes = resolveNodes(nodeIds)
+  return runDownloadAssets(nodes, { defaultFormat, defaultScale })
+}
+
 export type MCPHandlers = {
   get_code: (args?: GetCodeParametersInput) => Promise<GetCodeResult>
   get_token_defs: (args?: GetTokenDefsParametersInput) => Promise<GetTokenDefsResult>
   get_screenshot: (args?: GetScreenshotParametersInput) => Promise<GetScreenshotResult>
   get_structure: (args?: GetStructureParametersInput) => Promise<GetStructureResult>
+  download_assets: (args?: DownloadAssetsParametersInput) => Promise<DownloadAssetsResult>
 }
 
 export type TempadWindowHandlers = Omit<MCPHandlers, 'get_code'> & {
@@ -114,7 +149,8 @@ export const MCP_TOOL_HANDLERS: MCPHandlers = {
   get_code: handleGetCode,
   get_token_defs: handleGetTokenDefs,
   get_screenshot: handleGetScreenshot,
-  get_structure: handleGetStructure
+  get_structure: handleGetStructure,
+  download_assets: handleDownloadAssets
 }
 
 export const WINDOW_TEMPAD_TOOL_HANDLERS: TempadWindowHandlers = {
@@ -129,10 +165,11 @@ function isMcpToolName(name: string): name is McpToolName {
 }
 
 export async function runMcpTool(name: string, args: unknown): Promise<unknown> {
-  if (!isMcpToolName(name)) {
+  const resolved = resolveOfficialToolAlias(name)
+  if (!isMcpToolName(resolved)) {
     throw new Error(`No handler registered for tool "${name}".`)
   }
-  const handler = MCP_TOOL_HANDLERS[name] as (args?: unknown) => Promise<unknown>
+  const handler = MCP_TOOL_HANDLERS[resolved] as (args?: unknown) => Promise<unknown>
   return handler(args)
 }
 
