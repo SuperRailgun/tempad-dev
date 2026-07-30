@@ -7,11 +7,15 @@ import {
   coercePayloadToToolResponse,
   createAssetsToolResponse,
   createCodeToolResponse,
+  createDownloadAssetsToolResponse,
   createInlineBudgetExceededToolResponse,
   createScreenshotToolResponse,
   createStructureToolResponse,
   createTokenDefsToolResponse,
-  createToolErrorResponse
+  createToolErrorResponse,
+  getToolAliases,
+  TOOL_ALIAS_DEFS,
+  TOOL_DEFS
 } from '../src/tools'
 
 const codePayload: ToolResultMap['get_code'] = {
@@ -151,11 +155,40 @@ describe('tools response helpers', () => {
     expect(textContent(result.content[0])).toContain('Missing: beefcafe')
   })
 
+  it('formats download_assets responses with export and raw image summaries', () => {
+    const payload: ToolResultMap['download_assets'] = {
+      exports: [
+        {
+          hash: 'aaaabbbb',
+          url: 'https://assets.example.com/aaaabbbb.svg',
+          mimeType: 'image/svg+xml',
+          size: 256,
+          nodeId: '1:2',
+          nodeName: 'Icon',
+          kind: 'export',
+          format: 'svg',
+          fromExportSettings: true
+        }
+      ],
+      rawImages: [],
+      rawImagesTruncated: true
+    }
+
+    const result = createDownloadAssetsToolResponse(payload)
+    expect(result.structuredContent).toEqual(payload)
+    expect(textContent(result.content[0])).toContain('Export renders: 1 asset')
+    expect(textContent(result.content[0])).toContain('No raw source images were found')
+    expect(textContent(result.content[0])).toContain('Raw source images were truncated')
+  })
+
   it('formats inline budget errors with retry guidance', () => {
     const result = createInlineBudgetExceededToolResponse('get_token_defs', 70000)
     expect(result.isError).toBe(true)
     expect(textContent(result.content[0])).toContain('64 KiB inline budget')
     expect(textContent(result.content[0])).toContain('split them into smaller batches')
+
+    const downloadAssets = createInlineBudgetExceededToolResponse('download_assets', 70000)
+    expect(textContent(downloadAssets.content[0])).toContain('Request fewer nodeIds')
   })
 
   it('coerces payloads to MCP CallToolResult', () => {
@@ -248,5 +281,47 @@ describe('tools response helpers', () => {
     expect(() =>
       createTokenDefsToolResponse({ '--x': null } as unknown as ToolResultMap['get_token_defs'])
     ).toThrow(/Invalid get_token_defs payload/)
+    expect(() =>
+      createDownloadAssetsToolResponse({
+        exports: []
+      } as unknown as ToolResultMap['download_assets'])
+    ).toThrow(/Invalid download_assets payload/)
+    expect(() =>
+      createDownloadAssetsToolResponse(null as unknown as ToolResultMap['download_assets'])
+    ).toThrow(/Invalid download_assets payload/)
+  })
+})
+
+describe('tool exposure and official aliases', () => {
+  it('exposes every tool to MCP clients', () => {
+    expect(TOOL_DEFS.map((tool) => tool.name)).toEqual([
+      'get_code',
+      'get_token_defs',
+      'get_screenshot',
+      'get_structure',
+      'download_assets',
+      'get_assets'
+    ])
+    expect(TOOL_DEFS.filter((tool) => 'exposed' in tool && tool.exposed === false)).toEqual([])
+  })
+
+  it('registers official Figma MCP aliases for their TemPad implementations', () => {
+    expect(TOOL_ALIAS_DEFS.map((alias) => [alias.name, alias.canonical])).toEqual([
+      ['get_design_context', 'get_code'],
+      ['get_metadata', 'get_structure'],
+      ['get_variable_defs', 'get_token_defs']
+    ])
+
+    expect(getToolAliases('get_code').map((alias) => alias.name)).toEqual(['get_design_context'])
+    expect(getToolAliases('get_structure').map((alias) => alias.name)).toEqual(['get_metadata'])
+    expect(getToolAliases('get_token_defs').map((alias) => alias.name)).toEqual([
+      'get_variable_defs'
+    ])
+    expect(getToolAliases('download_assets')).toEqual([])
+
+    TOOL_ALIAS_DEFS.forEach((alias) => {
+      expect(alias.description).toContain(alias.canonical)
+      expect(TOOL_DEFS.some((tool) => tool.name === alias.canonical)).toBe(true)
+    })
   })
 })

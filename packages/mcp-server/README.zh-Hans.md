@@ -17,8 +17,14 @@
 
 支持的工具和资源：
 
-- `get_code`：以 Tailwind 优先的 JSX/Vue 标记输出，并附带资源和变量引用。
-- `get_structure`：当前选中节点的层级/几何结构信息。
+- `get_code`（同时以 `get_design_context` 暴露）：以 Tailwind 优先的 JSX/Vue 标记输出，并附带资源和变量引用。
+- `get_structure`（同时以 `get_metadata` 暴露）：当前选中节点的层级/几何结构信息。
+- `get_token_defs`（同时以 `get_variable_defs` 暴露）：解析指定 token 名称的值；省略 `names` 时返回选中节点用到的全部 token。
+- `get_screenshot`：当前选中节点的 PNG 截图，以 asset URL 形式返回。
+- `download_assets`：为最多 20 个节点同时返回导出渲染结果和原始图片填充。
+- `get_assets`：把此前工具结果中的 asset hash 解析回下载 URL。
+
+工具同时以官方 [Figma MCP 工具名](https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/) 和 TemPad 名称暴露；完整对照表以及本项目未实现的工具见[官方 Figma MCP 工具兼容说明](../../docs/mcp/figma-tool-compatibility.md)。
 
 说明：
 

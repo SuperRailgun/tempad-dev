@@ -2,7 +2,12 @@ import type { ZodType } from 'zod'
 
 import { z } from 'zod'
 
-import { MCP_HASH_PATTERN } from './constants'
+import {
+  MCP_DOWNLOAD_ASSETS_MAX_NODES,
+  MCP_DOWNLOAD_ASSETS_MAX_SCALE,
+  MCP_DOWNLOAD_ASSETS_MIN_SCALE,
+  MCP_HASH_PATTERN
+} from './constants'
 
 export const AssetDescriptorSchema = z.object({
   hash: z.string().regex(MCP_HASH_PATTERN),
@@ -69,8 +74,15 @@ export const GetTokenDefsParametersSchema = z.object({
     .array(z.string().regex(/^--[a-zA-Z0-9-_]+$/))
     .min(1)
     .describe(
-      'Canonical token names (CSS variable form) from Object.keys(get_code.tokens) or your own list to resolve, e.g., --color-primary.'
-    ),
+      'Canonical token names (CSS variable form) from Object.keys(get_code.tokens) or your own list to resolve, e.g., --color-primary. Omit to resolve every token used by nodeId/the current single selection.'
+    )
+    .optional(),
+  nodeId: z
+    .string()
+    .describe(
+      'Optional node id whose subtree tokens should be resolved when names is omitted; defaults to the current single selection.'
+    )
+    .optional(),
   includeAllModes: z
     .boolean()
     .describe(
@@ -144,6 +156,54 @@ export type GetStructureResult = {
   roots: OutlineNode[]
 }
 
+// download_assets
+export const DOWNLOAD_ASSET_FORMATS = ['png', 'jpg', 'svg', 'pdf'] as const
+
+export const DownloadAssetsParametersSchema = z.object({
+  nodeIds: z
+    .array(z.string().min(1))
+    .min(1)
+    .max(MCP_DOWNLOAD_ASSETS_MAX_NODES)
+    .describe(
+      `Node ids to download assets for (max ${MCP_DOWNLOAD_ASSETS_MAX_NODES}); omit to use the current single selection.`
+    )
+    .optional(),
+  defaultFormat: z
+    .enum(DOWNLOAD_ASSET_FORMATS)
+    .describe('Export format used for nodes without Figma export settings; defaults to png.')
+    .optional(),
+  defaultScale: z
+    .number()
+    .min(MCP_DOWNLOAD_ASSETS_MIN_SCALE)
+    .max(MCP_DOWNLOAD_ASSETS_MAX_SCALE)
+    .describe(
+      `Export scale used for raster formats when a node has no export settings (${MCP_DOWNLOAD_ASSETS_MIN_SCALE}–${MCP_DOWNLOAD_ASSETS_MAX_SCALE}); defaults to 1.`
+    )
+    .optional()
+})
+
+export type DownloadAssetsParametersInput = z.input<typeof DownloadAssetsParametersSchema>
+export type DownloadAssetFormat = (typeof DOWNLOAD_ASSET_FORMATS)[number]
+export type DownloadAssetExport = AssetDescriptor & {
+  nodeId: string
+  nodeName: string
+  kind: 'export'
+  format: DownloadAssetFormat
+  scale?: number
+  fromExportSettings: boolean
+}
+export type DownloadAssetRawImage = AssetDescriptor & {
+  figmaImageHash: string
+  nodeIds: string[]
+  source: 'raw'
+}
+export type DownloadAssetsResult = {
+  exports: DownloadAssetExport[]
+  rawImages: DownloadAssetRawImage[]
+  rawImagesTruncated?: boolean
+  warnings?: string[]
+}
+
 // get_assets (hub only)
 export const GetAssetsParametersSchema = z.object({
   hashes: z
@@ -169,6 +229,7 @@ export type ToolResultMap = {
   get_token_defs: GetTokenDefsResult
   get_screenshot: GetScreenshotResult
   get_structure: GetStructureResult
+  download_assets: DownloadAssetsResult
   get_assets: GetAssetsResult
 }
 
@@ -181,4 +242,26 @@ export type ToolSchema<Name extends ToolName> = {
   target: 'extension' | 'hub'
   outputSchema?: ZodType
   exposed?: boolean
+}
+
+/**
+ * Official Figma MCP tool names that map onto TemPad tools with equivalent semantics.
+ * Aliases are exposed alongside the TemPad names so community skills and agents can
+ * keep calling the official names against this read-only pipeline.
+ */
+export const OFFICIAL_TOOL_ALIASES = {
+  get_design_context: 'get_code',
+  get_metadata: 'get_structure',
+  get_variable_defs: 'get_token_defs'
+} as const satisfies Record<string, ToolName>
+
+export type OfficialToolAlias = keyof typeof OFFICIAL_TOOL_ALIASES
+
+export function isOfficialToolAlias(name: string): name is OfficialToolAlias {
+  return Object.hasOwn(OFFICIAL_TOOL_ALIASES, name)
+}
+
+/** Resolve an official alias to the TemPad tool that implements it; passthrough otherwise. */
+export function resolveOfficialToolAlias(name: string): string {
+  return isOfficialToolAlias(name) ? OFFICIAL_TOOL_ALIASES[name] : name
 }

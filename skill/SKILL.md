@@ -9,7 +9,7 @@ description: >-
   hidden states, responsiveness, or behavior not shown in design or project
   evidence.
 metadata:
-  version: '4.3'
+  version: '4.4'
 ---
 
 # TemPad Dev: Figma Design to Code
@@ -46,7 +46,12 @@ Use three evidence channels for different jobs:
   scripts
 - **Design evidence**: `tempad-dev:get_code` first for markup, styles, tokens,
   assets, warnings, and codegen facts; `tempad-dev:get_structure` only for
-  hierarchy, geometry, overlap, and retry targeting
+  hierarchy, geometry, overlap, and retry targeting;
+  `tempad-dev:get_screenshot` only to visually confirm what a node looks like;
+  `tempad-dev:download_assets` only when the project needs a specific export
+  format or the original uploaded image. TemPad Dev also exposes these tools
+  under the official Figma MCP names (`get_design_context`, `get_metadata`,
+  `get_variable_defs`); either name reaches the same implementation
 - **User input**: missing behavioral intent, responsive intent, target file,
   acceptable tradeoffs, asset or dependency decisions, or other product or
   implementation decisions that cannot be recovered from project or design
@@ -249,6 +254,10 @@ Follow the established asset policy first.
 
 - Download bytes only from TemPad-provided `asset.url`. Never substitute public
   internet assets.
+- Assets attached to `get_code` cover the normal case. Call
+  `tempad-dev:download_assets` when the project needs a specific export format
+  (PNG, JPG, SVG, PDF), a node's configured Figma export settings, or the
+  original uploaded source image instead of a re-render.
 - Treat assets as files to save or reference, not as text evidence to parse.
 - If policy forbids storing assets, you may reference TemPad URLs, but you must
   warn that the output depends on the local TemPad asset server.

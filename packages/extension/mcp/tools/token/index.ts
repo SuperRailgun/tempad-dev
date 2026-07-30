@@ -1,2 +1,2 @@
 export { collectCandidateVariableIds } from './candidates'
-export { handleGetTokenDefs, resolveTokenDefsByNames } from './defs'
+export { handleGetTokenDefs, handleGetTokenDefsForNodes, resolveTokenDefsByNames } from './defs'

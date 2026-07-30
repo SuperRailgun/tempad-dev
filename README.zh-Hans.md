@@ -210,7 +210,12 @@ Figma 也提供官方的 [remote 与 desktop MCP server](https://developers.figm
 
 - `get_code`：默认输出高保真的 JSX/Vue + TailwindCSS 代码，同时包含相关资源以及使用的 codegen 预设和配置。
 - `get_structure`：当前选中节点的结构信息（id、类型、几何数据）。
+- `get_token_defs`：解析指定 token 名称的值；省略名称时返回当前选中节点用到的全部 token。
+- `get_screenshot`：当前选中节点的 PNG 截图，用于视觉校验。
+- `download_assets`：为最多 20 个节点同时返回导出渲染结果和原始图片填充。
 - 二进制资源会通过工具响应中的元数据 + HTTP 下载地址（`asset.url`）提供；MCP 不再暴露 asset 资源模板。
+
+每个工具同时以官方 Figma MCP 名称暴露（`get_design_context`、`get_metadata`、`get_variable_defs`），因此按官方服务器编写的 agent 和 skill 无需改动即可使用。对照表以及需要 Figma 账号、因此本项目未实现的工具见[官方 Figma MCP 工具兼容说明](docs/mcp/figma-tool-compatibility.md)。
 
 ### 配置指南
 

@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getTokenIndex: vi.fn(),
   canonicalizeName: vi.fn(),
   canonicalizeNames: vi.fn(),
+  collectCandidateVariableIds: vi.fn(),
+  getVariableByIdCached: vi.fn(),
   getVariableRawName: vi.fn(),
   currentCodegenConfig: vi.fn(),
   formatHexAlpha: vi.fn(),
@@ -25,6 +27,14 @@ vi.mock('@/mcp/tools/token/indexer', () => ({
   canonicalizeName: mocks.canonicalizeName,
   canonicalizeNames: mocks.canonicalizeNames,
   getVariableRawName: mocks.getVariableRawName
+}))
+
+vi.mock('@/mcp/tools/token/candidates', () => ({
+  collectCandidateVariableIds: mocks.collectCandidateVariableIds
+}))
+
+vi.mock('@/mcp/tools/token/cache', () => ({
+  getVariableByIdCached: mocks.getVariableByIdCached
 }))
 
 vi.mock('@/mcp/tools/config', () => ({
@@ -136,6 +146,57 @@ describe('mcp/tools/token/defs', () => {
     await expect(mod.handleGetTokenDefs(['big'])).rejects.toThrow(
       'Token tool result exceeded the 64 KiB inline budget. Reduce requested names or split into smaller batches and retry.'
     )
+  })
+
+  it('resolves every token used by a node subtree when no names are requested', async () => {
+    const mod = await import('@/mcp/tools/token/defs')
+    const variable = createVariable('id-color', 'primary', {
+      resolvedType: 'COLOR',
+      valuesByMode: { modeA: { r: 0.1, g: 0.2, b: 0.3, a: 1 } }
+    })
+
+    mocks.collectCandidateVariableIds.mockReturnValue({
+      variableIds: new Set(['id-color', 'id-missing']),
+      rewrites: new Map()
+    })
+    mocks.getVariableByIdCached.mockImplementation((id: string) =>
+      id === 'id-color' ? variable : null
+    )
+
+    const index = createIndex()
+    index.canonicalNameById.set('id-color', '--primary')
+    mocks.getTokenIndex.mockResolvedValue(index)
+    ;(globalThis as unknown as { figma: PluginAPI }).figma = {
+      variables: {
+        getVariableById: vi.fn((id: string) => (id === 'id-color' ? variable : null)),
+        getVariableCollectionById: vi.fn(() => ({
+          id: 'collection-1',
+          name: 'Theme',
+          defaultModeId: 'modeA',
+          modes: [{ modeId: 'modeA', name: 'Light' }]
+        })),
+        getVariableModeId: vi.fn(() => 'modeA')
+      }
+    } as unknown as PluginAPI
+
+    const roots = [{ id: 'node-1' }] as unknown as SceneNode[]
+    const result = await mod.handleGetTokenDefsForNodes(roots)
+
+    expect(mocks.collectCandidateVariableIds).toHaveBeenCalledWith(roots)
+    expect(result).toEqual({ '--primary': { kind: 'color', value: '#112233' } })
+  })
+
+  it('returns no tokens when a node subtree references no variables', async () => {
+    const mod = await import('@/mcp/tools/token/defs')
+    mocks.collectCandidateVariableIds.mockReturnValue({
+      variableIds: new Set<string>(),
+      rewrites: new Map()
+    })
+
+    await expect(
+      mod.handleGetTokenDefsForNodes([{ id: 'node-1' }] as unknown as SceneNode[])
+    ).resolves.toEqual({})
+    expect(mocks.getTokenIndex).not.toHaveBeenCalled()
   })
 
   it('resolves candidates directly when candidateNameById is provided', async () => {

@@ -1,4 +1,5 @@
 import type {
+  DownloadAssetsResult,
   GetAssetsResult,
   GetCodeResult,
   GetScreenshotResult,
@@ -85,6 +86,34 @@ export function buildGetScreenshotToolResult(payload: GetScreenshotResult): Tool
     `${describeScreenshot(payload)} - Download: ${payload.asset.url}`,
     payload
   )
+}
+
+export function buildDownloadAssetsToolResult(payload: DownloadAssetsResult): ToolResponseLike {
+  const summary: string[] = []
+
+  summary.push(
+    payload.exports.length
+      ? `Export renders: ${formatCount(payload.exports.length, 'asset')}.`
+      : 'No export renders were produced.'
+  )
+  summary.push(
+    payload.rawImages.length
+      ? `Raw source images: ${formatCount(payload.rawImages.length, 'asset')}.`
+      : 'No raw source images were found in the requested subtrees.'
+  )
+
+  if (payload.rawImagesTruncated) {
+    summary.push(
+      'Raw source images were truncated. Pass a more specific child node to reach the rest.'
+    )
+  }
+  if (payload.warnings?.length) {
+    summary.push(...payload.warnings)
+  }
+
+  summary.push('Download bytes from each asset.url. Read structuredContent for the full manifest.')
+
+  return buildTextToolResult(summary.join('\n'), payload)
 }
 
 export function buildGetAssetsToolResult(payload: GetAssetsResult): ToolResponseLike {

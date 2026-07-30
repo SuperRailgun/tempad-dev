@@ -3,6 +3,7 @@ import type { AssetDescriptor } from '@tempad-dev/shared'
 import type { CodegenConfig } from '@/utils/codegen'
 
 import { ensureAssetUploaded } from '@/mcp/assets'
+import { cacheImageBytes, detectImageMime, loadImageBytes } from '@/mcp/tools/image-bytes'
 import { BG_URL_RE } from '@/utils/css'
 import { logger } from '@/utils/log'
 import { toDecimalPlace } from '@/utils/number'
@@ -10,8 +11,6 @@ import { toDecimalPlace } from '@/utils/number'
 import type { GetCodeCacheContext } from '../cache'
 
 import { getNodeSemanticsCached } from '../cache'
-
-const imageBytesCache = new Map<string, Promise<Uint8Array>>()
 
 export function hasImageFills(node: SceneNode, ctx?: GetCodeCacheContext): boolean {
   if (ctx) {
@@ -124,70 +123,4 @@ async function collectImageFillAssets(
 
 function isRenderableImagePaint(paint: Paint): paint is ImagePaint {
   return paint.type === 'IMAGE' && paint.visible !== false
-}
-
-function loadImageBytes(hash: string): Promise<Uint8Array> {
-  let promise = imageBytesCache.get(hash)
-  if (!promise) {
-    const image = figma.getImageByHash(hash)
-    if (!image) {
-      throw new Error(`Unable to resolve image for hash ${hash}.`)
-    }
-    promise = image
-      .getBytesAsync()
-      .then((bytes) => {
-        imageBytesCache.set(hash, Promise.resolve(bytes))
-        return bytes
-      })
-      .catch((error) => {
-        imageBytesCache.delete(hash)
-        throw error
-      })
-    imageBytesCache.set(hash, promise)
-  }
-  return promise
-}
-
-function cacheImageBytes(hash: string, bytes: Uint8Array): void {
-  imageBytesCache.set(hash, Promise.resolve(bytes))
-}
-
-function detectImageMime(bytes: Uint8Array): string {
-  if (
-    bytes.length >= 4 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  ) {
-    return 'image/png'
-  }
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    return 'image/jpeg'
-  }
-  if (
-    bytes.length >= 6 &&
-    bytes[0] === 0x47 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x38 &&
-    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
-    bytes[5] === 0x61
-  ) {
-    return 'image/gif'
-  }
-  if (
-    bytes.length >= 12 &&
-    bytes[0] === 0x52 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x46 &&
-    bytes[8] === 0x57 &&
-    bytes[9] === 0x45 &&
-    bytes[10] === 0x42 &&
-    bytes[11] === 0x50
-  ) {
-    return 'image/webp'
-  }
-  return 'application/octet-stream'
 }

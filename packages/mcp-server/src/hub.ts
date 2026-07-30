@@ -52,7 +52,9 @@ import {
   coercePayloadToToolResponse,
   createAssetsToolResponse,
   createInlineBudgetExceededToolResponse,
-  createToolErrorResponse
+  createToolErrorResponse,
+  getToolAliases,
+  type ToolAliasDefinition
 } from './tools'
 import { startExtensionWebSocketServer } from './websocket-server'
 
@@ -328,6 +330,9 @@ function createMcpServer(): McpServer {
     if ('exposed' in tool && tool.exposed === false) continue
     registerTool(mcp, tool)
     registered.push(tool.name)
+    for (const alias of getToolAliases(tool.name)) {
+      if (registerToolAlias(mcp, tool, alias)) registered.push(alias.name)
+    }
   }
   log.info({ tools: registered }, 'Registered tools.')
 
@@ -342,7 +347,25 @@ function registerTool(mcp: McpServer, tool: RegisteredTool): void {
   }
 }
 
-function registerProxiedTool<T extends ExtensionTool>(mcp: McpServer, tool: T): void {
+function registerToolAlias(
+  mcp: McpServer,
+  tool: RegisteredTool,
+  alias: ToolAliasDefinition
+): boolean {
+  if (tool.target !== 'extension') {
+    log.warn({ alias: alias.name, tool: tool.name }, 'Skipped alias for a non-proxied tool.')
+    return false
+  }
+
+  registerProxiedTool(mcp, tool, alias)
+  return true
+}
+
+function registerProxiedTool<T extends ExtensionTool>(
+  mcp: McpServer,
+  tool: T,
+  alias?: ToolAliasDefinition
+): void {
   type Name = T['name']
   type Result = ToolResultMap[Name]
 
@@ -352,6 +375,7 @@ function registerProxiedTool<T extends ExtensionTool>(mcp: McpServer, tool: T): 
     handler: (args: unknown) => Promise<CallToolResult>
   ) => unknown
 
+  const exposedName = alias?.name ?? tool.name
   const schema = tool.parameters
   const handler = async (args: unknown) => {
     let requestId: string | undefined
@@ -378,7 +402,12 @@ function registerProxiedTool<T extends ExtensionTool>(mcp: McpServer, tool: T): 
       }
       activeExt.ws.send(JSON.stringify(message))
       log.info(
-        { tool: tool.name, req: registration.requestId, extId: activeExt.id },
+        {
+          tool: exposedName,
+          forwardedAs: tool.name,
+          req: registration.requestId,
+          extId: activeExt.id
+        },
         'Forwarded tool call.'
       )
 
@@ -388,21 +417,21 @@ function registerProxiedTool<T extends ExtensionTool>(mcp: McpServer, tool: T): 
       const normalized = coerceToolError(error)
       log.error(
         {
-          tool: tool.name,
+          tool: exposedName,
           req: requestId,
           code: getRecordProperty(normalized, 'code'),
           message: normalized.message
         },
         'Tool invocation failed.'
       )
-      return createToolErrorResponse(tool.name, normalized)
+      return createToolErrorResponse(exposedName, normalized)
     }
   }
 
   registerToolFn(
-    tool.name,
+    exposedName,
     {
-      description: tool.description,
+      description: alias?.description ?? tool.description,
       inputSchema: schema as unknown as McpInputSchema
     },
     handler
