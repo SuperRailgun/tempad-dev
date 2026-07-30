@@ -191,6 +191,28 @@ describe('mcp/tools/download-assets', () => {
     expect(result.rawImages).toEqual([])
   })
 
+  it('keeps the shallowest fills when capping raw images', async () => {
+    const deepChild = createNode({ id: 'deep', fills: [imagePaint('image-deep')] })
+    const root = createNode({
+      id: 'shallow-root',
+      fills: Array.from({ length: 20 }, (_, index) => imagePaint(`image-shallow-${index}`)),
+      children: [deepChild]
+    })
+    setFigmaImages(
+      Object.fromEntries(
+        [...Array.from({ length: 20 }, (_, index) => `image-shallow-${index}`), 'image-deep'].map(
+          (hash) => [hash, { getBytesAsync: async () => png }]
+        )
+      )
+    )
+
+    const result = await handleDownloadAssets([root])
+
+    expect(result.rawImagesTruncated).toBe(true)
+    expect(result.rawImages.map((entry) => entry.figmaImageHash)).not.toContain('image-deep')
+    expect(result.rawImages[0].figmaImageHash).toBe('image-shallow-0')
+  })
+
   it('flags truncation when the subtree exceeds the raw image cap', async () => {
     const hashes = Array.from({ length: 21 }, (_, index) => `image-${index}`)
     const root = createNode({ id: 'root', fills: hashes.map((hash) => imagePaint(hash)) })
@@ -202,6 +224,25 @@ describe('mcp/tools/download-assets', () => {
 
     expect(result.rawImages).toHaveLength(20)
     expect(result.rawImagesTruncated).toBe(true)
+  })
+
+  it('stops scanning pathological subtrees and reports the cap', async () => {
+    const children = Array.from({ length: 5001 }, (_, index) =>
+      createNode({
+        id: `child-${index}`,
+        fills: index === 5000 ? [imagePaint('image-beyond-scan-cap')] : []
+      })
+    )
+    const root = createNode({ id: 'huge', children })
+    setFigmaImages({ 'image-beyond-scan-cap': { getBytesAsync: async () => png } })
+
+    const result = await handleDownloadAssets([root])
+
+    expect(result.rawImages).toEqual([])
+    expect(result.rawImagesTruncated).toBe(true)
+    expect(result.warnings).toEqual([
+      'Stopped scanning for raw source images after 5000 nodes. Request a smaller subtree to cover the rest.'
+    ])
   })
 
   it('reports warnings for failed exports and unresolved raw images', async () => {

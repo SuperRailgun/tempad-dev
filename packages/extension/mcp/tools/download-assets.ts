@@ -169,10 +169,16 @@ async function collectRawImages(
   nodes: SceneNode[],
   warnings: string[]
 ): Promise<{ rawImages: DownloadAssetRawImage[]; truncated: boolean }> {
-  const hashes = collectImageFillHashes(nodes)
-  const truncated = hashes.size > MCP_DOWNLOAD_ASSETS_MAX_RAW_IMAGES
+  const { hashes, scanCapped } = collectImageFillHashes(nodes)
+  const truncated = scanCapped || hashes.size > MCP_DOWNLOAD_ASSETS_MAX_RAW_IMAGES
   const entries = Array.from(hashes.entries()).slice(0, MCP_DOWNLOAD_ASSETS_MAX_RAW_IMAGES)
   const rawImages: DownloadAssetRawImage[] = []
+
+  if (scanCapped) {
+    warnings.push(
+      `Stopped scanning for raw source images after ${MAX_SCANNED_NODES} nodes. Request a smaller subtree to cover the rest.`
+    )
+  }
 
   for (const [figmaImageHash, nodeIds] of entries) {
     try {
@@ -195,16 +201,24 @@ async function collectRawImages(
   return { rawImages, truncated }
 }
 
-function collectImageFillHashes(nodes: SceneNode[]): Map<string, string[]> {
+// Breadth-first so the raw image cap keeps the shallowest (most relevant) fills.
+function collectImageFillHashes(nodes: SceneNode[]): {
+  hashes: Map<string, string[]>
+  scanCapped: boolean
+} {
   const hashes = new Map<string, string[]>()
-  const stack = [...nodes]
-  let scanned = 0
+  const queue = [...nodes]
+  let cursor = 0
+  let scanCapped = false
 
-  while (stack.length) {
-    const node = stack.pop()
-    if (!node) continue
-    if (scanned >= MAX_SCANNED_NODES) break
-    scanned += 1
+  while (cursor < queue.length) {
+    if (cursor >= MAX_SCANNED_NODES) {
+      scanCapped = true
+      break
+    }
+
+    const node = queue[cursor]
+    cursor += 1
 
     for (const hash of getImageFillHashes(node)) {
       const nodeIds = hashes.get(hash)
@@ -217,12 +231,12 @@ function collectImageFillHashes(nodes: SceneNode[]): Map<string, string[]> {
 
     if ('children' in node) {
       for (const child of node.children) {
-        if (child.visible !== false) stack.push(child)
+        if (child.visible !== false) queue.push(child)
       }
     }
   }
 
-  return hashes
+  return { hashes, scanCapped }
 }
 
 function getImageFillHashes(node: SceneNode): string[] {

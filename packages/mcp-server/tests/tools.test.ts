@@ -286,6 +286,9 @@ describe('tools response helpers', () => {
         exports: []
       } as unknown as ToolResultMap['download_assets'])
     ).toThrow(/Invalid download_assets payload/)
+    expect(() =>
+      createDownloadAssetsToolResponse(null as unknown as ToolResultMap['download_assets'])
+    ).toThrow(/Invalid download_assets payload/)
   })
 })
 

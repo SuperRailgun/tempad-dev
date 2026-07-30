@@ -214,7 +214,12 @@ With the TemPad Dev panel open and MCP enabled, the MCP server exposes:
 
 - `get_code`: High-fidelity JSX/Vue + TailwindCSS code output by default, plus attached assets and the codegen preset/config used.
 - `get_structure`: A structural outline (ids, types, geometry) for the current selection.
+- `get_token_defs`: Token values for the requested names, or every token used by the current selection.
+- `get_screenshot`: A rendered PNG of the current selection for visual verification.
+- `download_assets`: Export renders plus the original uploaded image fills for up to 20 nodes.
 - Binary assets are returned as metadata + HTTP download URLs (`asset.url`) in tool responses. Asset MCP resources are not exposed.
+
+Every tool is also exposed under its official Figma MCP name (`get_design_context`, `get_metadata`, `get_variable_defs`), so agents and skills written against the official server work unchanged. See [official Figma MCP tool compatibility](docs/mcp/figma-tool-compatibility.md) for the mapping and the tools that require a Figma account and are therefore not implemented here.
 
 ### Setup guide
 

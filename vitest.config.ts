@@ -60,6 +60,8 @@ export default defineConfig({
         'packages/extension/mcp/tools/config.ts',
         'packages/extension/mcp/tools/structure.ts',
         'packages/extension/mcp/tools/screenshot.ts',
+        'packages/extension/mcp/tools/download-assets.ts',
+        'packages/extension/mcp/tools/image-bytes.ts',
         'packages/extension/mcp/tools/code/layout-parent.ts',
         'packages/extension/mcp/tools/code/messages.ts',
         'packages/extension/mcp/tools/code/render/plugin.ts',

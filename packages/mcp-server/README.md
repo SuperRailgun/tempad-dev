@@ -19,8 +19,14 @@ For agent-specific setup, open TemPad Dev's **Preferences → Agent integration 
 
 Supported tools/resources:
 
-- `get_code`: Tailwind-first JSX/Vue markup plus assets and token references.
-- `get_structure`: Hierarchy/geometry outline for the selection.
+- `get_code` (also exposed as `get_design_context`): Tailwind-first JSX/Vue markup plus assets and token references.
+- `get_structure` (also exposed as `get_metadata`): Hierarchy/geometry outline for the selection.
+- `get_token_defs` (also exposed as `get_variable_defs`): Token values for the requested names, or every token used by the selection when `names` is omitted.
+- `get_screenshot`: Rendered PNG of the selection, returned as an asset URL.
+- `download_assets`: Export renders plus the original uploaded image fills for up to 20 nodes.
+- `get_assets`: Resolve asset hashes from earlier tool results back to download URLs.
+
+Tools are exposed under both the official [Figma MCP tool names](https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/) and the TemPad names; see [official Figma MCP tool compatibility](../../docs/mcp/figma-tool-compatibility.md) for the full mapping and the tools that are intentionally not implemented.
 
 Notes:
 
