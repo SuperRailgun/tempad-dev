@@ -57,14 +57,19 @@ Point the MCP client at the local build instead of the published package, for ex
 }
 ```
 
-To confirm tool registration without an MCP client, run the probe against the built Hub:
+Two checks run against the built Hub without needing Figma:
 
 ```bash
 pnpm -C packages/mcp-server probe:tools
 pnpm -C packages/mcp-server probe:tools --call get_design_context --args '{"nodeId":"1:2"}'
+pnpm -C packages/mcp-server check:tool-routing
 ```
 
-It lists the registered tools, fails when an expected name is missing, and can invoke one tool. Without a connected extension every call fails with `NO_ACTIVE_EXTENSION`, which still proves the tool is registered and routed. Hub logs are written to `tempad-dev/log` under the system temp directory (override with `TEMPAD_MCP_LOG_DIR`).
+`probe:tools` lists the registered tools, fails when an expected name is missing, and can invoke one tool. Without a connected extension every call fails with `NO_ACTIVE_EXTENSION`, which still proves the tool is registered and routed.
+
+`check:tool-routing` connects a fake extension WebSocket client alongside a real MCP consumer and asserts that each exposed tool reaches the extension under its canonical TemPad name, so an alias that leaked its own name or lost its formatter fails the check.
+
+With the extension connected, confirm the design path in Figma: select a node, then call `get_design_context` (should match `get_code`), `get_screenshot` (returns a PNG `asset.url`), and `download_assets` on a node containing an image fill (should return both `exports` and `rawImages`). Hub logs are written to `tempad-dev/log` under the system temp directory (override with `TEMPAD_MCP_LOG_DIR`).
 
 ## Reading results
 
