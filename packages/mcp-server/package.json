@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "tsdown",
+    "probe:tools": "node scripts/probe-tools.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest --config vitest.config.ts",
     "test:run": "vitest run --config vitest.config.ts",

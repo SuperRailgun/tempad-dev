@@ -32,6 +32,40 @@ These official tools need a Figma account, write access, or Figma-hosted service
 
 `use_figma`, `upload_assets`, `create_new_file`, `generate_diagram`, `generate_figma_design`, `whoami`, `search_design_system`, `get_libraries`, `get_motion_context`, `get_figjam`, the Code Connect tools (`add_code_connect_map`, `get_code_connect_map`, `get_code_connect_suggestions`, `get_context_for_code_connect`, `send_code_connect_mappings`), and the shader tools (`get_shader_effect`, `get_shader_fill`, `list_shader_effects`, `list_shader_fills`).
 
+## Running and verifying locally
+
+Build the packages and load the development extension:
+
+```bash
+pnpm install
+pnpm build:mcp        # builds packages/mcp-server/dist/cli.mjs
+pnpm dev              # WXT dev server for the extension
+```
+
+Load `packages/extension/.output/chrome-mv3-dev` through `chrome://extensions` → **Load unpacked**, open a Figma file, then enable **Preferences → Agent integration → MCP access** in the TemPad Dev panel and allow the loopback connection. The MCP badge in the panel title bar must read **Active**; with several Figma tabs open, click the badge in the tab the agent should inspect.
+
+Point the MCP client at the local build instead of the published package, for example in `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "tempad-dev": {
+      "command": "node",
+      "args": ["<repo>/packages/mcp-server/dist/cli.mjs"]
+    }
+  }
+}
+```
+
+To confirm tool registration without an MCP client, run the probe against the built Hub:
+
+```bash
+pnpm -C packages/mcp-server probe:tools
+pnpm -C packages/mcp-server probe:tools --call get_design_context --args '{"nodeId":"1:2"}'
+```
+
+It lists the registered tools, fails when an expected name is missing, and can invoke one tool. Without a connected extension every call fails with `NO_ACTIVE_EXTENSION`, which still proves the tool is registered and routed. Hub logs are written to `tempad-dev/log` under the system temp directory (override with `TEMPAD_MCP_LOG_DIR`).
+
 ## Reading results
 
 Every tool result carries a short text summary plus the full payload in `structuredContent`. Some clients (Cursor among them) surface only the text summary in the transcript, so agents should read `structuredContent` — or fall back to a script that reads it — rather than treating the summary as the response.
