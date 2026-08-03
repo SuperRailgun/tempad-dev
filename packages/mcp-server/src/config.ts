@@ -54,9 +54,25 @@ function resolveMaxExtensionConnections(): number {
   )
 }
 
+/**
+ * Lets a second Hub run beside a client-owned one, which local verification needs
+ * so it never attaches to the extension session a developer is actively using.
+ */
+function resolveWsPortCandidates(): number[] {
+  const configured = process.env.TEMPAD_MCP_WS_PORTS
+  if (!configured) return [...MCP_PORT_CANDIDATES]
+
+  const ports = configured
+    .split(',')
+    .map((value) => Number.parseInt(value.trim(), 10))
+    .filter((port) => Number.isInteger(port) && port > 0 && port <= 65535)
+
+  return ports.length ? ports : [...MCP_PORT_CANDIDATES]
+}
+
 export function getMcpServerConfig() {
   return {
-    wsPortCandidates: [...MCP_PORT_CANDIDATES],
+    wsPortCandidates: resolveWsPortCandidates(),
     toolTimeoutMs: resolveToolTimeoutMs(),
     maxPayloadBytes: MCP_MAX_PAYLOAD_BYTES,
     autoActivateGraceMs: resolveAutoActivateGraceMs(),

@@ -43,6 +43,7 @@
 - `TEMPAD_MCP_MAX_ASSET_STORE_BYTES`：本地资源存储总量上限（字节，默认 `268435456`）。
 - `TEMPAD_MCP_MAX_CONCURRENT_ASSET_UPLOADS`：资源并发上传上限（默认 `4`）。
 - `TEMPAD_MCP_MAX_EXTENSION_CONNECTIONS`：单个 Hub 同时允许的浏览器扩展连接上限（默认 `16`）。
+- `TEMPAD_MCP_WS_PORTS`：扩展 WebSocket 连接尝试的端口，以逗号分隔（默认 `6220,7431,8127`）。用于在 MCP 客户端已持有一个 Hub 时另起一个，避免抢占正在使用的扩展会话。
 - `TEMPAD_MCP_ALLOWED_EXTENSION_ORIGINS`：允许连接的精确 `chrome-extension://...` Origin，以逗号分隔。配置值无效时启动会直接失败，而不会弱化策略；未配置时为了向后兼容会接受所有格式合法的 Chrome 扩展 Origin。
 - `TEMPAD_MCP_ASSET_TTL_MS`：资源基于最近访问时间的清理 TTL（毫秒）；设置为 `0` 表示禁用（默认 `2592000000`）。
 - `TEMPAD_MCP_RUNTIME_DIR`：运行时目录覆盖（默认在系统临时目录下的 `tempad-dev/run`）。

@@ -21,7 +21,8 @@ const ENV_KEYS = [
   'TEMPAD_MCP_MAX_CONCURRENT_ASSET_UPLOADS',
   'TEMPAD_MCP_MAX_EXTENSION_CONNECTIONS',
   'TEMPAD_MCP_ALLOWED_EXTENSION_ORIGINS',
-  'TEMPAD_MCP_ASSET_TTL_MS'
+  'TEMPAD_MCP_ASSET_TTL_MS',
+  'TEMPAD_MCP_WS_PORTS'
 ] as const
 
 const originalEnv = new Map<string, string | undefined>()
@@ -106,5 +107,20 @@ describe('mcp-server/config getMcpServerConfig', () => {
       allowedExtensionOrigins: process.env.TEMPAD_MCP_ALLOWED_EXTENSION_ORIGINS,
       assetTtlMs: MCP_ASSET_TTL_MS
     })
+  })
+
+  it('overrides WebSocket ports so a second Hub can run beside a client-owned one', () => {
+    process.env.TEMPAD_MCP_WS_PORTS = '61220'
+    expect(getMcpServerConfig().wsPortCandidates).toEqual([61220])
+
+    process.env.TEMPAD_MCP_WS_PORTS = ' 61220 , 61221 '
+    expect(getMcpServerConfig().wsPortCandidates).toEqual([61220, 61221])
+  })
+
+  it('falls back to the shared ports when the override has no usable value', () => {
+    for (const value of ['', 'abc', '0', '70000', 'abc,-1']) {
+      process.env.TEMPAD_MCP_WS_PORTS = value
+      expect(getMcpServerConfig().wsPortCandidates).toEqual([...MCP_PORT_CANDIDATES])
+    }
   })
 })

@@ -32,10 +32,13 @@ Do not merge older local work that introduced a `get_raw_images` tool. That name
 
 ```bash
 pnpm install          # also builds packages/shared through its prepare script
+pnpm -C packages/shared build
 pnpm build:mcp        # produces packages/mcp-server/dist/cli.mjs
 ```
 
-Expected: both finish without errors and `packages/mcp-server/dist/cli.mjs` exists.
+Expected: all three finish without errors and `packages/mcp-server/dist/cli.mjs` exists.
+
+The explicit `packages/shared` build matters when you are updating an existing checkout. `pnpm install` prints `Already up to date` and skips the `prepare` script, so `packages/shared/dist` keeps the previous build and the Hub runs against stale response builders. Rebuild shared and the MCP server after every `git pull`.
 
 ## 3. Checks that need no Figma
 
@@ -57,6 +60,8 @@ pnpm -C packages/mcp-server check:tool-routing
 ```
 
 Expected: `[tool-routing] All checks passed.` and exit code 0. This starts the Hub with a real MCP consumer plus a fake extension WebSocket client and asserts each exposed tool reaches the extension under its canonical TemPad name — `get_design_context` must arrive as `get_code`, `get_metadata` as `get_structure`, `get_variable_defs` as `get_token_defs`.
+
+The check runs in its own runtime directory on port 61220, so it is safe to run while an MCP client holds the usual Hub and your browser extension is connected. It will neither attach to that Hub nor steal the active extension session. Override the port with `TEMPAD_MCP_WS_PORTS` if 61220 is taken.
 
 Repository checks, if you want the full suite:
 
@@ -92,6 +97,8 @@ Use the local entry point, not `npx @tempad-dev/mcp@latest`, or you will test th
 
 Restart the MCP client and confirm its tool list shows the nine names from step 3.
 
+The client owns the Hub process, so it does not pick up a rebuild on its own. After every change to `packages/shared` or `packages/mcp-server`: rebuild both, then restart the server entry in the client (in Cursor, **Settings → MCP**, toggle `tempad-dev` off and on). A stale Hub is the usual reason a fix appears to have no effect. Extension-side changes are different — `pnpm dev` reloads those, and you only need to refresh the extension in `chrome://extensions` and confirm the badge is still **Active**.
+
 ## 6. End-to-end acceptance **[human]** to select, agent to call
 
 Select a single visible node in Figma before each call, or pass its `nodeId`. The two document-level rows are the exception: deselect everything first.
@@ -110,22 +117,24 @@ Select a single visible node in Figma before each call, or pass its `nodeId`. Th
 
 Two things worth confirming while you are here:
 
-- Prefer `structuredContent` when the client exposes it. For `get_metadata` / `get_structure`, the text summary also lists page ids or top-level node ids, so Cursor agents can drill down even when only the summary is visible.
+- Prefer `structuredContent` when the client exposes it. Page ids, top-level node ids, and asset URLs are also inlined in the text summary, so an agent can keep drilling down even when only the summary is visible. Everything else (code, geometry, token values) is only in `structuredContent`.
 - Assets are URL-first. Tool results never inline base64 bytes; `asset.url` points at the local asset HTTP server and is only valid while the Hub runs.
 
 ## 7. Troubleshooting
 
-| Symptom                                                         | Cause and fix                                                                                                                                                              |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install` fails with `Failed to import module "unrun"`     | Node is older than 22.18. Switch versions and reinstall.                                                                                                                   |
-| Tool call returns `[NO_ACTIVE_EXTENSION]`                       | No extension is connected or active. Keep the Figma tab open and foregrounded, enable MCP access, and click the badge until it reads **Active**.                           |
-| Tool call returns `[INVALID_SELECTION]` or `[NODE_NOT_VISIBLE]` | Select exactly one visible node, or pass a `nodeId` that resolves in the active file.                                                                                      |
-| Tool call returns `[ASSET_SERVER_NOT_CONFIGURED]`               | The extension has no asset server URL yet, usually because the tab is not the active MCP session. Re-activate through the badge.                                           |
-| Response says the 64 KiB inline budget was exceeded             | Expected for large selections. Retry with a narrower `nodeId`, a smaller `depth`, or fewer `nodeIds`.                                                                      |
-| `download_assets` returns `rawImagesTruncated: true`            | More than 20 distinct source images in the subtree. Request a more specific child node.                                                                                    |
-| `download_assets` returns entries in `warnings`                 | Individual exports or raw images failed while the rest succeeded; the message names the node or image hash. Oversized assets fail here rather than failing the whole call. |
-| MCP client lists old tool names                                 | It is still running the published package. Fix the `command`/`args` to the local `dist/cli.mjs` and restart the client.                                                    |
-| Nothing explains the failure                                    | Hub logs are under `tempad-dev/log` in the system temp directory; override with `TEMPAD_MCP_LOG_DIR`. The Hub listens for the extension on ports 6220, 7431, or 8127.      |
+| Symptom                                                                                                  | Cause and fix                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install` fails with `Failed to import module "unrun"`                                              | Node is older than 22.18. Switch versions and reinstall.                                                                                                                                                                               |
+| Tool call returns `[NO_ACTIVE_EXTENSION]`                                                                | No extension is connected or active. Keep the Figma tab open and foregrounded, enable MCP access, and click the badge until it reads **Active**.                                                                                       |
+| Tool call returns `[INVALID_SELECTION]` or `[NODE_NOT_VISIBLE]`                                          | Select exactly one visible node, or pass a `nodeId` that resolves in the active file.                                                                                                                                                  |
+| Tool call returns `[ASSET_SERVER_NOT_CONFIGURED]`                                                        | The extension has no asset server URL yet, usually because the tab is not the active MCP session. Re-activate through the badge.                                                                                                       |
+| Response says the 64 KiB inline budget was exceeded                                                      | Expected for large selections. Retry with a narrower `nodeId`, a smaller `depth`, or fewer `nodeIds`.                                                                                                                                  |
+| `download_assets` returns `rawImagesTruncated: true`                                                     | More than 20 distinct source images in the subtree. Request a more specific child node.                                                                                                                                                |
+| `download_assets` returns entries in `warnings`                                                          | Individual exports or raw images failed while the rest succeeded; the message names the node or image hash. Oversized assets fail here rather than failing the whole call.                                                             |
+| MCP client lists old tool names                                                                          | It is still running the published package. Fix the `command`/`args` to the local `dist/cli.mjs` and restart the client.                                                                                                                |
+| A fix has no effect, or a summary matches the previous build                                             | Stale build or stale Hub. Run `pnpm -C packages/shared build && pnpm build:mcp`, then restart the server entry in the MCP client.                                                                                                      |
+| `get_code` times out with `EXTENSION_TIMEOUT`, or calls report `Unable to establish connection to Figma` | The extension is not really serving. Confirm the badge reads **Active**, restart `pnpm dev` if a hot reload wedged it, then refresh the extension in `chrome://extensions`. Larger nodes surface this first because they take longest. |
+| Nothing explains the failure                                                                             | Hub logs are under `tempad-dev/log` in the system temp directory; override with `TEMPAD_MCP_LOG_DIR`. The Hub listens for the extension on ports 6220, 7431, or 8127.                                                                  |
 
 ## 8. What is out of scope
 

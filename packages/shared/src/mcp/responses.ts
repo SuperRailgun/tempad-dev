@@ -7,6 +7,8 @@ import type {
   GetTokenDefsResult
 } from './tools'
 
+import { MCP_SUMMARY_INLINE_BUDGET_BYTES } from './constants'
+
 const ENCODER = new TextEncoder()
 
 export type ToolResponseContentBlock = {
@@ -80,15 +82,18 @@ function describeDocumentPages(payload: GetStructureResult): string {
   if (payload.pagesTruncated) {
     lines.push('The page list was truncated to fit the response budget.')
   }
+
   if (pages.length) {
     // Clients such as Cursor often surface only the text block to the agent, so the
     // usable page ids must live here — not only in structuredContent.
     lines.push('Pages:')
-    for (const page of pages) {
-      lines.push(
-        page.isCurrent ? `- ${page.name} (${page.id}) [current]` : `- ${page.name} (${page.id})`
+    lines.push(
+      ...describeInlineList(
+        pages,
+        (page) => `- ${page.name || 'Unnamed'} (${page.id})${page.isCurrent ? ' [current]' : ''}`,
+        'page'
       )
-    }
+    )
     lines.push('Call this tool again with a page id as nodeId to outline that page.')
   }
 
@@ -97,21 +102,21 @@ function describeDocumentPages(payload: GetStructureResult): string {
 
 function describeStructureOutline(payload: GetStructureResult): string {
   const roots = payload.roots
-  const nodeCount = countOutlineNodes(roots)
-  const lines: string[] = []
+  if (!roots.length) return 'No structure nodes were returned.'
 
-  if (!roots.length) {
-    lines.push('No structure nodes were returned.')
-    return lines.join('\n')
-  }
+  const nodeCount = countOutlineNodes(roots)
+  const lines: string[] = [
+    `Returned structure outline with ${formatCount(roots.length, 'root')} and ${formatCount(nodeCount, 'node')}.`,
+    'Top-level nodes:'
+  ]
 
   lines.push(
-    `Returned structure outline with ${formatCount(roots.length, 'root')} and ${formatCount(nodeCount, 'node')}.`
+    ...describeInlineList(
+      roots,
+      (root) => `- ${root.name || 'Unnamed'} [${root.type}] (${root.id})`,
+      'root'
+    )
   )
-  lines.push('Top-level nodes:')
-  for (const root of roots) {
-    lines.push(`- ${root.name} [${root.type}] (${root.id})`)
-  }
   lines.push(
     'Call this tool again with a child id as nodeId for more depth, or get_code / get_design_context for implementation.'
   )
@@ -147,11 +152,30 @@ export function buildDownloadAssetsToolResult(payload: DownloadAssetsResult): To
       ? `Export renders: ${formatCount(payload.exports.length, 'asset')}.`
       : 'No export renders were produced.'
   )
+  if (payload.exports.length) {
+    summary.push(
+      ...describeInlineList(
+        payload.exports,
+        (entry) => `- ${entry.nodeName || entry.nodeId} [${entry.format}] ${entry.url}`,
+        'export'
+      )
+    )
+  }
+
   summary.push(
     payload.rawImages.length
       ? `Raw source images: ${formatCount(payload.rawImages.length, 'asset')}.`
       : 'No raw source images were found in the requested subtrees.'
   )
+  if (payload.rawImages.length) {
+    summary.push(
+      ...describeInlineList(
+        payload.rawImages,
+        (entry) => `- ${entry.mimeType} ${entry.url}`,
+        'raw image'
+      )
+    )
+  }
 
   if (payload.rawImagesTruncated) {
     summary.push(
@@ -162,7 +186,7 @@ export function buildDownloadAssetsToolResult(payload: DownloadAssetsResult): To
     summary.push(...payload.warnings)
   }
 
-  summary.push('Download bytes from each asset.url. Read structuredContent for the full manifest.')
+  summary.push('Download bytes from each URL above.')
 
   return buildTextToolResult(summary.join('\n'), payload)
 }
@@ -180,6 +204,31 @@ export function buildGetAssetsToolResult(payload: GetAssetsResult): ToolResponse
   summary.push('Download bytes from each asset.url.')
 
   return buildTextToolResult(summary.join('\n'), payload)
+}
+
+/**
+ * Renders one line per item, stopping at a byte budget so a long list cannot crowd
+ * out the response. Inlining matters because several MCP clients hand the agent only
+ * the text block, leaving ids and URLs in structuredContent unreachable.
+ */
+function describeInlineList<T>(items: T[], format: (item: T) => string, label: string): string[] {
+  const lines: string[] = []
+  let used = 0
+
+  for (const [index, item] of items.entries()) {
+    const line = format(item)
+    used += utf8Bytes(line) + 1
+    if (used > MCP_SUMMARY_INLINE_BUDGET_BYTES) {
+      const remaining = items.length - index
+      lines.push(
+        `- ...and ${formatCount(remaining, `more ${label}`)}; read structuredContent for the rest.`
+      )
+      break
+    }
+    lines.push(line)
+  }
+
+  return lines
 }
 
 function buildTextToolResult(text: string, structuredContent: unknown): ToolResponseLike {

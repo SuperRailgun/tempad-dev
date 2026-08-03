@@ -90,6 +90,8 @@ With the extension connected, confirm the design path in Figma: select a node, t
 
 ## Reading results
 
-Every tool result carries a text summary plus the full payload in `structuredContent`. Prefer `structuredContent` when the client exposes it (geometry, nested children, token objects, asset manifests). Some clients (Cursor among them) surface only the text block to the agent; for `get_structure` / `get_metadata`, the summary therefore inlines the page list or top-level node ids so the next call can be made without that field.
+Every tool result carries a text summary plus the full payload in `structuredContent`. Prefer `structuredContent` when the client exposes it (geometry, nested children, token objects, asset metadata). Some clients (Cursor among them) surface only the text block to the agent, so the values needed to make the next call are inlined in the summary too: page and top-level node ids from `get_structure` / `get_metadata`, and asset URLs from `download_assets`. That keeps an agent able to walk a file even when `structuredContent` never reaches it.
+
+Inlined lists are capped at an 8 KiB share of the response; past that the summary reports how many entries were dropped, and they remain available in `structuredContent`.
 
 Assets are always delivered as `asset.url` download links served by the local asset HTTP server; bytes are never inlined as base64 in tool results.

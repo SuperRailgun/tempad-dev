@@ -5,9 +5,9 @@
 // the other, then asserts that every exposed tool reaches the extension under its
 // canonical TemPad name (official aliases must forward, not leak their alias name).
 
-import { MCP_PORT_CANDIDATES } from '@tempad-dev/shared'
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocket } from 'ws'
@@ -15,6 +15,10 @@ import { WebSocket } from 'ws'
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const CLI_PATH = join(ROOT, 'dist/cli.mjs')
 const FAKE_EXTENSION_ORIGIN = 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+// Run fully isolated: a Hub started by an MCP client owns the default socket and
+// ports, and attaching to it would hijack the extension session in use.
+const ISOLATED_WS_PORT = 61220
+const ISOLATED_RUNTIME_DIR = mkdtempSync(join(tmpdir(), 'tempad-tool-routing-'))
 const REQUEST_TIMEOUT_MS = 15000
 // The Hub auto-activates a sole extension only after its grace period.
 const ACTIVATION_WAIT_MS = 2500
@@ -121,7 +125,16 @@ function check(label, actual, expected) {
   )
 }
 
-const consumer = spawn(process.execPath, [CLI_PATH], { stdio: ['pipe', 'pipe', 'ignore'] })
+const consumer = spawn(process.execPath, [CLI_PATH], {
+  stdio: ['pipe', 'pipe', 'ignore'],
+  env: {
+    ...process.env,
+    TEMPAD_MCP_RUNTIME_DIR: ISOLATED_RUNTIME_DIR,
+    TEMPAD_MCP_WS_PORTS: String(ISOLATED_WS_PORT),
+    TEMPAD_MCP_ASSET_DIR: join(ISOLATED_RUNTIME_DIR, 'assets'),
+    TEMPAD_MCP_LOG_DIR: join(ISOLATED_RUNTIME_DIR, 'log')
+  }
+})
 const pending = new Map()
 let nextId = 1
 let buffer = ''
@@ -163,27 +176,38 @@ function notify(method, params) {
   consumer.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`)
 }
 
+// Only ever connect to the isolated Hub this script started.
 function connectFakeExtension() {
   return new Promise((resolve, reject) => {
-    let attempt = 0
-    const tryNextPort = () => {
-      if (attempt >= MCP_PORT_CANDIDATES.length) {
-        reject(new Error('No Hub WebSocket port was reachable.'))
-        return
-      }
-      const port = MCP_PORT_CANDIDATES[attempt]
-      attempt += 1
-      const socket = new WebSocket(`ws://127.0.0.1:${port}`, { origin: FAKE_EXTENSION_ORIGIN })
+    let attempts = 0
+    const tryConnect = () => {
+      attempts += 1
+      const socket = new WebSocket(`ws://127.0.0.1:${ISOLATED_WS_PORT}`, {
+        origin: FAKE_EXTENSION_ORIGIN
+      })
       socket.once('open', () => resolve(socket))
-      socket.once('error', () => setTimeout(tryNextPort, 200))
+      socket.once('error', () => {
+        if (attempts >= 25) {
+          reject(
+            new Error(
+              `The isolated Hub never listened on port ${ISOLATED_WS_PORT}. Set TEMPAD_MCP_WS_PORTS to a free port and retry.`
+            )
+          )
+          return
+        }
+        setTimeout(tryConnect, 200)
+      })
     }
-    tryNextPort()
+    tryConnect()
   })
 }
 
 function finish(code) {
   consumer.kill('SIGTERM')
-  setTimeout(() => process.exit(code), 300)
+  setTimeout(() => {
+    rmSync(ISOLATED_RUNTIME_DIR, { force: true, recursive: true })
+    process.exit(code)
+  }, 300)
 }
 
 try {

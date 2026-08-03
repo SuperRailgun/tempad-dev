@@ -45,6 +45,7 @@ Optional environment variables:
 - `TEMPAD_MCP_MAX_ASSET_STORE_BYTES`: Maximum aggregate size of the local asset store in bytes (default `268435456`).
 - `TEMPAD_MCP_MAX_CONCURRENT_ASSET_UPLOADS`: Maximum simultaneous asset uploads (default `4`).
 - `TEMPAD_MCP_MAX_EXTENSION_CONNECTIONS`: Maximum simultaneous browser extension connections to one Hub (default `16`).
+- `TEMPAD_MCP_WS_PORTS`: Comma-separated ports to try for extension WebSocket connections (default `6220,7431,8127`). Use this to run a second Hub beside one owned by an MCP client, so it does not take over the active extension session.
 - `TEMPAD_MCP_ALLOWED_EXTENSION_ORIGINS`: Comma-separated exact `chrome-extension://...` origins allowed to connect. Invalid configured values fail startup rather than weakening the policy. When omitted, any syntactically valid Chrome extension origin is accepted for backward compatibility.
 - `TEMPAD_MCP_ASSET_TTL_MS`: Asset cleanup TTL in milliseconds based on last access; set `0` to disable (default `2592000000`).
 - `TEMPAD_MCP_RUNTIME_DIR`: Override runtime directory (defaults to system temp under `tempad-dev/run`).
