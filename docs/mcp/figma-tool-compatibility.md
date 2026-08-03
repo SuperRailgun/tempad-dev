@@ -34,6 +34,8 @@ These official tools need a Figma account, write access, or Figma-hosted service
 
 ## Running and verifying locally
 
+For a step-by-step local check with expected results and troubleshooting, see the [local verification runbook](./local-verification-runbook.md).
+
 Building this repo needs Node 22.18+ (or 24+), even though the published MCP server only needs Node 18.20+. `tsdown` loads its TypeScript config through Node's native type stripping, which older releases lack; on those, `pnpm install` already fails while building `packages/shared`.
 
 Build the packages and load the development extension:

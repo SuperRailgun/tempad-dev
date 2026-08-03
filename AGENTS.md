@@ -41,6 +41,7 @@ Provide a single entry point for coding agents. This file links to package-level
 - `TESTING.md`
 - `docs/testing/architecture.md`
 - `docs/mcp/figma-tool-compatibility.md`
+- `docs/mcp/local-verification-runbook.md`
 - `docs/extension/mcp-get-code-requirements.md`
 - `docs/extension/mcp-get-code-design.md`
 - `docs/extension/mcp-browser-gateway-design.md`
