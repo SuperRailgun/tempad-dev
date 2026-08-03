@@ -62,6 +62,8 @@ describe('mcp/responses helpers', () => {
       roots: [{ id: '1', name: 'Root', type: 'FRAME', x: 0, y: 0, width: 10, height: 10 }]
     })
     expect(structure.content?.[0]?.text).toContain('Returned structure outline')
+    expect(structure.content?.[0]?.text).toContain('- Root [FRAME] (1)')
+    expect(structure.content?.[0]?.text).not.toContain('structuredContent')
 
     const tokens = buildGetTokenDefsToolResult({
       '--color-primary': {
@@ -130,8 +132,10 @@ describe('mcp/responses helpers', () => {
     expect(result.structuredContent).toEqual(payload)
     expect(text).toContain('page list of "Design File": 2 pages')
     expect(text).toContain('Open page: "Components" (0:2).')
+    expect(text).toContain('- Cover (0:1)')
+    expect(text).toContain('- Components (0:2) [current]')
     expect(text).toContain('Call this tool again with a page id as nodeId')
-    expect(text).not.toContain('truncated')
+    expect(text).not.toContain('structuredContent')
   })
 
   it('flags a truncated page list and an unreadable document', () => {
@@ -141,10 +145,12 @@ describe('mcp/responses helpers', () => {
       pagesTruncated: true
     })
     expect(truncated.content?.[0]?.text).toContain('page list was truncated')
+    expect(truncated.content?.[0]?.text).toContain('- Cover (0:1)')
 
     const empty = buildGetStructureToolResult({ roots: [], pages: [] })
     expect(empty.content?.[0]?.text).toContain('no pages were readable')
     expect(empty.content?.[0]?.text).not.toContain('page id as nodeId')
+    expect(empty.content?.[0]?.text).not.toContain('Pages:')
   })
 
   it('summarizes empty download_assets responses', () => {

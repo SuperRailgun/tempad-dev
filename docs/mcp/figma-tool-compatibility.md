@@ -20,8 +20,8 @@ Both names are registered with the MCP server, so `tools/list` shows the officia
 
 A whole Figma file never fits one tool response, so `get_structure` (`get_metadata`) walks it in layers, the same way the official server does:
 
-1. Call it with no `nodeId` and nothing selected. Instead of a selection error you get the open document: `documentName` plus `pages`, where the open page carries `isCurrent: true`. `roots` is empty in this shape.
-2. Call it again with a page id as `nodeId` to outline that page's visible top-level frames. Pages other than the open one are loaded on demand.
+1. Call it with no `nodeId` and nothing selected. Instead of a selection error you get the open document: `documentName` plus `pages`, where the open page carries `isCurrent: true`. `roots` is empty in this shape. The text summary lists every page as `- name (id)` so agents can pick an id even when the client hides `structuredContent`.
+2. Call it again with a page id as `nodeId` to outline that page's visible top-level frames. Pages other than the open one are loaded on demand. The text summary lists top-level nodes the same way.
 3. Drill into any returned frame id with `get_structure` for more depth, or `get_code` for its implementation.
 
 The page list is capped by the same 64 KiB inline budget as everything else; when a document has more pages than fit, `pagesTruncated` is `true` and the open page is kept in the list so there is always a usable entry point.
@@ -90,6 +90,6 @@ With the extension connected, confirm the design path in Figma: select a node, t
 
 ## Reading results
 
-Every tool result carries a short text summary plus the full payload in `structuredContent`. Some clients (Cursor among them) surface only the text summary in the transcript, so agents should read `structuredContent` — or fall back to a script that reads it — rather than treating the summary as the response.
+Every tool result carries a text summary plus the full payload in `structuredContent`. Prefer `structuredContent` when the client exposes it (geometry, nested children, token objects, asset manifests). Some clients (Cursor among them) surface only the text block to the agent; for `get_structure` / `get_metadata`, the summary therefore inlines the page list or top-level node ids so the next call can be made without that field.
 
 Assets are always delivered as `asset.url` download links served by the local asset HTTP server; bytes are never inlined as base64 in tool results.

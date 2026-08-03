@@ -15,7 +15,7 @@ Tools:
 Rules:
 
 - Never output any `data-hint-*` attributes from tool outputs (hints only).
-- Tool results carry a short text summary plus the full payload in `structuredContent`. Read `structuredContent` for complete code, token, and asset data; the text block alone is not the response.
+- Tool results carry a text summary plus the full payload in `structuredContent`. Prefer `structuredContent` when available (code, tokens, asset manifests, nested geometry). For `get_structure` / `get_metadata`, the text summary also lists page ids or top-level node ids so you can drill down even if only the summary is visible.
 - If `get_code` warns `depth-cap`, keep the returned parent code as composition evidence and use returned `data-hint-id` values to choose narrower `get_code` follow-ups.
 - If `get_code` warns `shell`, read the inline code comment for omitted direct child ids, then call `get_code` for those ids in order and fill the results back into the returned shell.
 - Use `get_structure` only to resolve layout/overlap uncertainty; do not derive numeric values from images.

@@ -110,7 +110,7 @@ Select a single visible node in Figma before each call, or pass its `nodeId`. Th
 
 Two things worth confirming while you are here:
 
-- Read `structuredContent`, not just the text summary. Some clients (Cursor included) show only the summary in the transcript while the full payload sits in `structuredContent`.
+- Prefer `structuredContent` when the client exposes it. For `get_metadata` / `get_structure`, the text summary also lists page ids or top-level node ids, so Cursor agents can drill down even when only the summary is visible.
 - Assets are URL-first. Tool results never inline base64 bytes; `asset.url` points at the local asset HTTP server and is only valid while the Hub runs.
 
 ## 7. Troubleshooting

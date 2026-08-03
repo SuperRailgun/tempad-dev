@@ -59,17 +59,7 @@ export function buildGetStructureToolResult(payload: GetStructureResult): ToolRe
     return buildTextToolResult(describeDocumentPages(payload), payload)
   }
 
-  const roots = payload.roots.length
-  const nodeCount = countOutlineNodes(payload.roots)
-  const summary =
-    roots === 0
-      ? 'No structure nodes were returned.'
-      : `Returned structure outline with ${formatCount(roots, 'root')} and ${formatCount(nodeCount, 'node')}.`
-
-  return buildTextToolResult(
-    `${summary}\nRead structuredContent for the full outline payload.`,
-    payload
-  )
+  return buildTextToolResult(describeStructureOutline(payload), payload)
 }
 
 function describeDocumentPages(payload: GetStructureResult): string {
@@ -91,10 +81,40 @@ function describeDocumentPages(payload: GetStructureResult): string {
     lines.push('The page list was truncated to fit the response budget.')
   }
   if (pages.length) {
+    // Clients such as Cursor often surface only the text block to the agent, so the
+    // usable page ids must live here — not only in structuredContent.
+    lines.push('Pages:')
+    for (const page of pages) {
+      lines.push(
+        page.isCurrent ? `- ${page.name} (${page.id}) [current]` : `- ${page.name} (${page.id})`
+      )
+    }
     lines.push('Call this tool again with a page id as nodeId to outline that page.')
   }
 
-  lines.push('Read structuredContent for the full page list.')
+  return lines.join('\n')
+}
+
+function describeStructureOutline(payload: GetStructureResult): string {
+  const roots = payload.roots
+  const nodeCount = countOutlineNodes(roots)
+  const lines: string[] = []
+
+  if (!roots.length) {
+    lines.push('No structure nodes were returned.')
+    return lines.join('\n')
+  }
+
+  lines.push(
+    `Returned structure outline with ${formatCount(roots.length, 'root')} and ${formatCount(nodeCount, 'node')}.`
+  )
+  lines.push('Top-level nodes:')
+  for (const root of roots) {
+    lines.push(`- ${root.name} [${root.type}] (${root.id})`)
+  }
+  lines.push(
+    'Call this tool again with a child id as nodeId for more depth, or get_code / get_design_context for implementation.'
+  )
 
   return lines.join('\n')
 }
