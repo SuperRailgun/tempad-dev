@@ -145,7 +145,7 @@ export const TOOL_DEFS = [
   extTool({
     name: 'get_structure',
     description:
-      'Get a compact structural + geometry outline for nodeId/current single selection to understand hierarchy and layout intent.',
+      'Get a compact structural + geometry outline for nodeId/current single selection to understand hierarchy and layout intent. Pass a page id as nodeId to outline a whole page. With no nodeId and nothing selected, returns the open document instead: `documentName` plus a `pages` list (the open one flagged `isCurrent`), so you can pick a page id and call again. Use this to explore a file you have not selected anything in.',
     parameters: GetStructureParametersSchema,
     target: 'extension',
     format: createStructureToolResponse
@@ -180,7 +180,7 @@ const ALIAS_DESCRIPTIONS: Record<OfficialToolAlias, string> = {
   get_design_context:
     'Official Figma MCP name for `get_code`: returns the design context (markup + styles, assets and token metadata) for nodeId/current single selection. Identical behavior and parameters as `get_code`.',
   get_metadata:
-    'Official Figma MCP name for `get_structure`: returns a sparse outline of nodeId/current single selection (layer ids, names, types, positions and sizes) to plan narrower follow-up calls. Identical behavior and parameters as `get_structure`.',
+    'Official Figma MCP name for `get_structure`: returns a sparse outline of nodeId/current single selection (layer ids, names, types, positions and sizes) to plan narrower follow-up calls. Called with no nodeId and nothing selected, it returns the open document`s page list instead so you can drill into a page id. Identical behavior and parameters as `get_structure`.',
   get_variable_defs:
     'Official Figma MCP name for `get_token_defs`: returns the variables/styles used by nodeId/the current single selection. Pass names to resolve specific canonical token names instead. Identical behavior and parameters as `get_token_defs`.'
 }

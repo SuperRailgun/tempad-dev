@@ -25,7 +25,10 @@ import { createCodedError } from './errors'
 import { handleGetCode as runGetCode } from './tools/code'
 import { handleDownloadAssets as runDownloadAssets } from './tools/download-assets'
 import { handleGetScreenshot as runGetScreenshot } from './tools/screenshot'
-import { handleGetStructure as runGetStructure } from './tools/structure'
+import {
+  handleGetDocumentPages as runGetDocumentPages,
+  handleGetStructure as runGetStructure
+} from './tools/structure'
 import {
   handleGetTokenDefs as runGetTokenDefs,
   handleGetTokenDefsForNodes as runGetTokenDefsForNodes
@@ -114,9 +117,40 @@ async function handleGetScreenshot(
 
 async function handleGetStructure(args?: GetStructureParametersInput): Promise<GetStructureResult> {
   const { nodeId, options } = args ?? {}
-  const root = resolveSingleNode(nodeId)
-  const depth = options?.depth
-  return runGetStructure([root], depth)
+  const roots = await resolveStructureRoots(nodeId)
+  if (!roots) {
+    return runGetDocumentPages()
+  }
+  return runGetStructure(roots, options?.depth)
+}
+
+function isPageNode(node: BaseNode | null): node is PageNode {
+  return !!node && node.type === 'PAGE'
+}
+
+async function readPageChildren(page: PageNode): Promise<SceneNode[]> {
+  // Pages other than the open one may not be loaded yet.
+  if (typeof page.loadAsync === 'function') {
+    await page.loadAsync()
+  }
+  return page.children.filter((child) => child.visible)
+}
+
+/** Returns the roots to outline, or null when the document overview should be returned instead. */
+async function resolveStructureRoots(nodeId?: string): Promise<SceneNode[] | null> {
+  if (nodeId) {
+    const node = figma.getNodeById(nodeId)
+    if (isPageNode(node)) {
+      return readPageChildren(node)
+    }
+    return [resolveSingleNode(nodeId)]
+  }
+
+  if (selection.value.length === 1 && selection.value[0].visible) {
+    return [selection.value[0]]
+  }
+
+  return null
 }
 
 async function handleDownloadAssets(

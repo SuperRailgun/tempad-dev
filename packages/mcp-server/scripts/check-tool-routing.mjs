@@ -30,6 +30,15 @@ const EXTENSION_RESULTS = {
   get_structure: {
     roots: [{ id: '1:2', name: 'Card', type: 'FRAME', x: 0, y: 0, width: 320, height: 180 }]
   },
+  // What the extension returns for get_structure when nothing is selected.
+  get_structure_document: {
+    roots: [],
+    documentName: 'Design File',
+    pages: [
+      { id: '0:1', name: 'Cover' },
+      { id: '0:2', name: 'Components', isCurrent: true }
+    ]
+  },
   get_token_defs: { '--color-primary': { kind: 'color', value: '#6699CC' } },
   get_screenshot: {
     format: 'png',
@@ -85,6 +94,12 @@ const CALLS = [
     called: 'download_assets',
     forwarded: 'download_assets',
     args: { nodeIds: ['1:2'], defaultFormat: 'svg' }
+  },
+  {
+    called: 'get_metadata',
+    forwarded: 'get_structure',
+    args: {},
+    expectSummary: 'page list'
   }
 ]
 
@@ -189,25 +204,31 @@ try {
       return
     }
     if (message.type !== 'toolCall') return
-    forwarded.push(message.payload.name)
+    const { name, args } = message.payload
+    forwarded.push(name)
+    const key = name === 'get_structure' && !args?.nodeId ? 'get_structure_document' : name
     socket.send(
       JSON.stringify({
         type: 'toolResult',
         id: message.id,
-        payload: EXTENSION_RESULTS[message.payload.name] ?? {}
+        payload: EXTENSION_RESULTS[key] ?? {}
       })
     )
   })
 
   await new Promise((resolve) => setTimeout(resolve, ACTIVATION_WAIT_MS))
 
-  for (const { called, forwarded: expectedName, args } of CALLS) {
+  for (const { called, forwarded: expectedName, args, expectSummary } of CALLS) {
     console.log(`${called}:`)
     const response = await request('tools/call', { name: called, arguments: args })
     const result = response.result
     check(`forwards to ${expectedName}`, forwarded.at(-1), expectedName)
     check('succeeds', result?.isError ?? false, false)
     check('returns structuredContent', result?.structuredContent !== undefined, true)
+    if (expectSummary) {
+      const summary = result?.content?.[0]?.text ?? ''
+      check(`summary mentions "${expectSummary}"`, summary.includes(expectSummary), true)
+    }
   }
 
   socket.close()

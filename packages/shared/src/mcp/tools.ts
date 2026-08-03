@@ -126,7 +126,7 @@ export const GetStructureParametersSchema = z.object({
   nodeId: z
     .string()
     .describe(
-      'Optional node id to outline; defaults to the current single selection. Useful when auto-layout hints are none/inferred or you need explicit geometry for refactors.'
+      'Optional node id to outline; accepts a page id to outline that whole page. Defaults to the current single selection, and falls back to the document page list when nothing is selected. Useful when auto-layout hints are none/inferred or you need explicit geometry for refactors.'
     )
     .optional(),
   options: z
@@ -152,8 +152,21 @@ export type OutlineNode = {
   height: number
   children?: OutlineNode[]
 }
+export type DocumentPage = {
+  id: string
+  name: string
+  isCurrent?: boolean
+}
 export type GetStructureResult = {
   roots: OutlineNode[]
+  /**
+   * Present when the tool returns the open document's overview instead of a node
+   * outline, i.e. no nodeId was given and nothing is selected. Call again with one
+   * of these page ids to outline that page.
+   */
+  pages?: DocumentPage[]
+  documentName?: string
+  pagesTruncated?: boolean
 }
 
 // download_assets

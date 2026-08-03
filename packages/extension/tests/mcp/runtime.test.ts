@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   },
   runDownloadAssets: vi.fn(),
   runGetCode: vi.fn(),
+  runGetDocumentPages: vi.fn(),
   runGetScreenshot: vi.fn(),
   runGetStructure: vi.fn(),
   runGetTokenDefs: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('@/mcp/tools/screenshot', () => ({
 }))
 
 vi.mock('@/mcp/tools/structure', () => ({
+  handleGetDocumentPages: mocks.runGetDocumentPages,
   handleGetStructure: mocks.runGetStructure
 }))
 
@@ -311,6 +313,50 @@ describe('mcp/runtime', () => {
         nodeIds: Array.from({ length: 21 }, (_, index) => `node-${index}`)
       })
     ).rejects.toThrow('Too many nodeIds requested (21). Limit is 20.')
+  })
+
+  it('outlines a whole page when nodeId resolves to a page', async () => {
+    const visibleChild = createSceneNode('child-visible')
+    const hiddenChild = createSceneNode('child-hidden', false)
+    const loadAsync = vi.fn().mockResolvedValue(undefined)
+    setFigmaGetNodeById({
+      id: '0:2',
+      type: 'PAGE',
+      loadAsync,
+      children: [visibleChild, hiddenChild]
+    } as unknown as BaseNode)
+    mocks.runGetStructure.mockReturnValue({ roots: [] })
+
+    const runtime = await importRuntime()
+    await runtime.MCP_TOOL_HANDLERS.get_structure({ nodeId: '0:2', options: { depth: 2 } })
+
+    expect(loadAsync).toHaveBeenCalledTimes(1)
+    expect(mocks.runGetStructure).toHaveBeenCalledWith([visibleChild], 2)
+    expect(mocks.runGetDocumentPages).not.toHaveBeenCalled()
+  })
+
+  it('returns the document page list when nothing is selected and no nodeId is given', async () => {
+    setFigmaGetNodeById(null)
+    mocks.selection.value = []
+    mocks.runGetDocumentPages.mockReturnValue({ roots: [], pages: [{ id: '0:1', name: 'Cover' }] })
+
+    const runtime = await importRuntime()
+    const result = await runtime.MCP_TOOL_HANDLERS.get_structure()
+
+    expect(mocks.runGetDocumentPages).toHaveBeenCalledTimes(1)
+    expect(mocks.runGetStructure).not.toHaveBeenCalled()
+    expect(result).toEqual({ roots: [], pages: [{ id: '0:1', name: 'Cover' }] })
+  })
+
+  it('returns the document page list through the official get_metadata name', async () => {
+    setFigmaGetNodeById(null)
+    mocks.selection.value = []
+    mocks.runGetDocumentPages.mockReturnValue({ roots: [], pages: [] })
+
+    const runtime = await importRuntime()
+    await runtime.runMcpTool('get_metadata', {})
+
+    expect(mocks.runGetDocumentPages).toHaveBeenCalledTimes(1)
   })
 
   it('routes screenshot and structure calls with node resolution and depth options', async () => {

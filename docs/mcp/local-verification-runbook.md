@@ -94,13 +94,15 @@ Restart the MCP client and confirm its tool list shows the nine names from step 
 
 ## 6. End-to-end acceptance **[human]** to select, agent to call
 
-Select a single visible node in Figma before each call, or pass its `nodeId`.
+Select a single visible node in Figma before each call, or pass its `nodeId`. The two document-level rows are the exception: deselect everything first.
 
 | Call                                           | Expected                                                                                                                              |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_design_context`                           | Same payload shape as `get_code`: `code`, `lang`, `codegen`, plus `assets`/`tokens` when present.                                     |
 | `get_code` on the same node                    | Result equivalent to the previous call, proving the alias is a forward and not a second implementation.                               |
 | `get_metadata`                                 | Outline in `roots` with ids, names, types, and geometry.                                                                              |
+| `get_metadata` with nothing selected           | The open document instead of an error: `documentName` plus a `pages` list, with `isCurrent: true` on the open page.                   |
+| `get_metadata` with a page id as `nodeId`      | That page's visible top-level frames in `roots`. Try a page other than the open one; it should load on demand.                        |
 | `get_variable_defs` with no `names`            | Every token used by the selected subtree, keyed by canonical `--name`. Empty object is valid for a node that references no variables. |
 | `get_screenshot`                               | `format: "png"` plus `asset.url`; fetching that URL returns PNG bytes.                                                                |
 | `download_assets` on a node with an image fill | Both `exports` (at least one entry, `kind: "export"`) and `rawImages` (at least one entry, `source: "raw"`); every `url` downloads.   |

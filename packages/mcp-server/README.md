@@ -20,7 +20,7 @@ For agent-specific setup, open TemPad Dev's **Preferences → Agent integration 
 Supported tools/resources:
 
 - `get_code` (also exposed as `get_design_context`): Tailwind-first JSX/Vue markup plus assets and token references.
-- `get_structure` (also exposed as `get_metadata`): Hierarchy/geometry outline for the selection.
+- `get_structure` (also exposed as `get_metadata`): Hierarchy/geometry outline for the selection, for a whole page when given a page id, or the open document's page list when nothing is selected.
 - `get_token_defs` (also exposed as `get_variable_defs`): Token values for the requested names, or every token used by the selection when `names` is omitted.
 - `get_screenshot`: Rendered PNG of the selection, returned as an asset URL.
 - `download_assets`: Export renders plus the original uploaded image fills for up to 20 nodes.

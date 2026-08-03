@@ -213,7 +213,7 @@ Figma also provides official [remote and desktop MCP servers](https://developers
 With the TemPad Dev panel open and MCP enabled, the MCP server exposes:
 
 - `get_code`: High-fidelity JSX/Vue + TailwindCSS code output by default, plus attached assets and the codegen preset/config used.
-- `get_structure`: A structural outline (ids, types, geometry) for the current selection.
+- `get_structure`: A structural outline (ids, types, geometry) for the current selection, a whole page when given a page id, or the open file's page list when nothing is selected.
 - `get_token_defs`: Token values for the requested names, or every token used by the current selection.
 - `get_screenshot`: A rendered PNG of the current selection for visual verification.
 - `download_assets`: Export renders plus the original uploaded image fills for up to 20 nodes.

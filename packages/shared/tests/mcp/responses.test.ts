@@ -114,6 +114,39 @@ describe('mcp/responses helpers', () => {
     expect(text).toContain('Download bytes from each asset.url.')
   })
 
+  it('summarizes the document page list and points at the next call', () => {
+    const payload: ToolResultMap['get_structure'] = {
+      roots: [],
+      documentName: 'Design File',
+      pages: [
+        { id: '0:1', name: 'Cover' },
+        { id: '0:2', name: 'Components', isCurrent: true }
+      ]
+    }
+
+    const result = buildGetStructureToolResult(payload)
+    const text = result.content?.[0]?.text ?? ''
+
+    expect(result.structuredContent).toEqual(payload)
+    expect(text).toContain('page list of "Design File": 2 pages')
+    expect(text).toContain('Open page: "Components" (0:2).')
+    expect(text).toContain('Call this tool again with a page id as nodeId')
+    expect(text).not.toContain('truncated')
+  })
+
+  it('flags a truncated page list and an unreadable document', () => {
+    const truncated = buildGetStructureToolResult({
+      roots: [],
+      pages: [{ id: '0:1', name: 'Cover' }],
+      pagesTruncated: true
+    })
+    expect(truncated.content?.[0]?.text).toContain('page list was truncated')
+
+    const empty = buildGetStructureToolResult({ roots: [], pages: [] })
+    expect(empty.content?.[0]?.text).toContain('no pages were readable')
+    expect(empty.content?.[0]?.text).not.toContain('page id as nodeId')
+  })
+
   it('summarizes empty download_assets responses', () => {
     const result = buildDownloadAssetsToolResult({ exports: [], rawImages: [] })
     const text = result.content?.[0]?.text ?? ''

@@ -55,6 +55,10 @@ export function buildGetCodeToolResult(payload: GetCodeResult): ToolResponseLike
 }
 
 export function buildGetStructureToolResult(payload: GetStructureResult): ToolResponseLike {
+  if (payload.pages) {
+    return buildTextToolResult(describeDocumentPages(payload), payload)
+  }
+
   const roots = payload.roots.length
   const nodeCount = countOutlineNodes(payload.roots)
   const summary =
@@ -66,6 +70,33 @@ export function buildGetStructureToolResult(payload: GetStructureResult): ToolRe
     `${summary}\nRead structuredContent for the full outline payload.`,
     payload
   )
+}
+
+function describeDocumentPages(payload: GetStructureResult): string {
+  const pages = payload.pages ?? []
+  const lines: string[] = []
+  const fileLabel = payload.documentName ? ` of "${payload.documentName}"` : ''
+
+  lines.push(
+    pages.length
+      ? `Nothing is selected, so this is the page list${fileLabel}: ${formatCount(pages.length, 'page')}.`
+      : `Nothing is selected and no pages were readable${fileLabel}.`
+  )
+
+  const current = pages.find((page) => page.isCurrent)
+  if (current) {
+    lines.push(`Open page: "${current.name}" (${current.id}).`)
+  }
+  if (payload.pagesTruncated) {
+    lines.push('The page list was truncated to fit the response budget.')
+  }
+  if (pages.length) {
+    lines.push('Call this tool again with a page id as nodeId to outline that page.')
+  }
+
+  lines.push('Read structuredContent for the full page list.')
+
+  return lines.join('\n')
 }
 
 export function buildGetTokenDefsToolResult(payload: GetTokenDefsResult): ToolResponseLike {

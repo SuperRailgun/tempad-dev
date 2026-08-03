@@ -4,16 +4,29 @@ TemPad Dev exposes its MCP tools under the [official Figma MCP tool names](https
 
 ## Tool mapping
 
-| Official name        | TemPad Dev tool   | Notes                                                                                                    |
-| -------------------- | ----------------- | -------------------------------------------------------------------------------------------------------- |
-| `get_design_context` | `get_code`        | Alias. Same parameters and result as `get_code`.                                                         |
-| `get_metadata`       | `get_structure`   | Alias. Structural outline (ids, names, types, geometry) as JSON rather than the official sparse XML.     |
-| `get_variable_defs`  | `get_token_defs`  | Alias. Without `names`, resolves every token used by `nodeId`/the current selection; `names` narrows it. |
-| `get_screenshot`     | `get_screenshot`  | Same name. Returns a PNG asset URL; inline base64 (`enableBase64Response`) is not supported.             |
-| `download_assets`    | `download_assets` | Same name. Returns `exports` plus `rawImages` for up to 20 nodes.                                        |
-| —                    | `get_assets`      | TemPad-specific: resolve asset hashes from earlier responses back to download URLs.                      |
+| Official name                | TemPad Dev tool   | Notes                                                                                                    |
+| ---------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------- |
+| `get_design_context`         | `get_code`        | Alias. Same parameters and result as `get_code`.                                                         |
+| `get_metadata`               | `get_structure`   | Alias. Structural outline (ids, names, types, geometry) as JSON rather than the official sparse XML.     |
+| `get_metadata` (no `nodeId`) | `get_structure`   | Returns the open document's page list, matching the official recovery path. See below.                   |
+| `get_variable_defs`          | `get_token_defs`  | Alias. Without `names`, resolves every token used by `nodeId`/the current selection; `names` narrows it. |
+| `get_screenshot`             | `get_screenshot`  | Same name. Returns a PNG asset URL; inline base64 (`enableBase64Response`) is not supported.             |
+| `download_assets`            | `download_assets` | Same name. Returns `exports` plus `rawImages` for up to 20 nodes.                                        |
+| —                            | `get_assets`      | TemPad-specific: resolve asset hashes from earlier responses back to download URLs.                      |
 
 Both names are registered with the MCP server, so `tools/list` shows the official name and the TemPad name. Aliases forward the canonical tool name to the extension, so behavior and payloads are identical.
+
+## Exploring a whole file
+
+A whole Figma file never fits one tool response, so `get_structure` (`get_metadata`) walks it in layers, the same way the official server does:
+
+1. Call it with no `nodeId` and nothing selected. Instead of a selection error you get the open document: `documentName` plus `pages`, where the open page carries `isCurrent: true`. `roots` is empty in this shape.
+2. Call it again with a page id as `nodeId` to outline that page's visible top-level frames. Pages other than the open one are loaded on demand.
+3. Drill into any returned frame id with `get_structure` for more depth, or `get_code` for its implementation.
+
+The page list is capped by the same 64 KiB inline budget as everything else; when a document has more pages than fit, `pagesTruncated` is `true` and the open page is kept in the list so there is always a usable entry point.
+
+Unlike the official server, a `nodeId` that fails to resolve returns a plain error rather than an error carrying the page list. Call with no `nodeId` to recover.
 
 ## `download_assets`
 

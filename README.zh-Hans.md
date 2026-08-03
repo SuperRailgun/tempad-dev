@@ -209,7 +209,7 @@ Figma 也提供官方的 [remote 与 desktop MCP server](https://developers.figm
 打开 TemPad Dev 面板并启用 MCP 后，MCP 服务器会暴露以下能力：
 
 - `get_code`：默认输出高保真的 JSX/Vue + TailwindCSS 代码，同时包含相关资源以及使用的 codegen 预设和配置。
-- `get_structure`：当前选中节点的结构信息（id、类型、几何数据）。
+- `get_structure`：当前选中节点的结构信息（id、类型、几何数据）；传入 page id 时输出整页结构，未选中任何节点时返回当前打开文件的页面列表。
 - `get_token_defs`：解析指定 token 名称的值；省略名称时返回当前选中节点用到的全部 token。
 - `get_screenshot`：当前选中节点的 PNG 截图，用于视觉校验。
 - `download_assets`：为最多 20 个节点同时返回导出渲染结果和原始图片填充。

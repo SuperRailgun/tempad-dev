@@ -1,12 +1,27 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { buildSemanticTree, semanticTreeToOutline } from '@/mcp/semantic-tree'
-import { handleGetStructure } from '@/mcp/tools/structure'
+import { handleGetDocumentPages, handleGetStructure } from '@/mcp/tools/structure'
 
 vi.mock('@/mcp/semantic-tree', () => ({
   buildSemanticTree: vi.fn(),
   semanticTreeToOutline: vi.fn()
 }))
+
+function setFigmaDocument(
+  pages: Array<{ id: string; name: string; type?: string }>,
+  currentPageId?: string,
+  documentName = 'Design File'
+): void {
+  ;(globalThis as { figma?: PluginAPI }).figma = {
+    root: { name: documentName, children: pages.map((page) => ({ type: 'PAGE', ...page })) },
+    currentPage: currentPageId ? { id: currentPageId } : undefined
+  } as unknown as PluginAPI
+}
+
+afterEach(() => {
+  delete (globalThis as { figma?: PluginAPI }).figma
+})
 
 describe('mcp/tools/structure', () => {
   it('uses undefined depth when input depth is falsy and returns outline payload', () => {
@@ -66,6 +81,68 @@ describe('mcp/tools/structure', () => {
     expect(countNodes(result.roots)).toBeLessThanOrEqual(240)
     expect(result.roots[0]?.name.length).toBeLessThanOrEqual(48)
     expect(result.roots[0]?.x).toBe(0.1)
+  })
+})
+
+describe('mcp/tools/structure document pages', () => {
+  it('lists the open document name and pages, flagging the open page', () => {
+    setFigmaDocument(
+      [
+        { id: '0:1', name: 'Cover' },
+        { id: '0:2', name: '  Components  ' },
+        { id: '0:3', name: 'Specs' }
+      ],
+      '0:2'
+    )
+
+    const result = handleGetDocumentPages()
+
+    expect(result.roots).toEqual([])
+    expect(result.documentName).toBe('Design File')
+    expect(result.pages).toEqual([
+      { id: '0:1', name: 'Cover' },
+      { id: '0:2', name: 'Components', isCurrent: true },
+      { id: '0:3', name: 'Specs' }
+    ])
+    expect(result.pagesTruncated).toBeUndefined()
+  })
+
+  it('ignores non-page children and a missing document name', () => {
+    ;(globalThis as { figma?: PluginAPI }).figma = {
+      root: {
+        name: '   ',
+        children: [
+          { id: '0:1', name: 'Page', type: 'PAGE' },
+          { id: '0:9', name: 'Stray', type: 'FRAME' }
+        ]
+      },
+      currentPage: { id: '0:1' }
+    } as unknown as PluginAPI
+
+    const result = handleGetDocumentPages()
+
+    expect(result.documentName).toBeUndefined()
+    expect(result.pages).toEqual([{ id: '0:1', name: 'Page', isCurrent: true }])
+  })
+
+  it('returns an empty page list when the document is unreadable', () => {
+    ;(globalThis as { figma?: PluginAPI }).figma = {} as unknown as PluginAPI
+
+    expect(handleGetDocumentPages()).toEqual({ roots: [], pages: [] })
+  })
+
+  it('truncates huge page lists but keeps the open page reachable', () => {
+    const pages = Array.from({ length: 1500 }, (_, index) => ({
+      id: `0:${index}`,
+      name: `Page ${index} ${'name padding '.repeat(12)}`
+    }))
+    setFigmaDocument(pages, '0:1499')
+
+    const result = handleGetDocumentPages()
+
+    expect(result.pagesTruncated).toBe(true)
+    expect(result.pages?.length).toBeLessThan(1500)
+    expect(result.pages?.some((page) => page.isCurrent && page.id === '0:1499')).toBe(true)
   })
 })
 
