@@ -77,6 +77,7 @@ describe('mcp-server/shared', () => {
     expect(shared.ASSET_DIR).toBe('/tmp/custom-assets')
     expect(shared.LOCK_PATH).toBe('/tmp/custom-run/mcp.lock')
     expect(shared.HUB_LOCK_PATH).toBe('/tmp/custom-run/hub.lock')
+    expect(shared.HUB_BUILD_PATH).toBe('/tmp/custom-run/hub.build.json')
     expect(shared.SOCK_PATH).toBe('/tmp/custom-run/mcp.sock')
     expect(shared.PACKAGE_VERSION).toMatch(/^\d+\.\d+\.\d+/)
 

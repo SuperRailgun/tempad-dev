@@ -74,6 +74,7 @@ export function ensureFile(filePath: string): void {
 
 export const LOCK_PATH = join(RUNTIME_DIR, 'mcp.lock')
 export const HUB_LOCK_PATH = join(RUNTIME_DIR, 'hub.lock')
+export const HUB_BUILD_PATH = join(RUNTIME_DIR, 'hub.build.json')
 ensureFile(LOCK_PATH)
 ensureFile(HUB_LOCK_PATH)
 

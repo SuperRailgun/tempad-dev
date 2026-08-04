@@ -10,6 +10,14 @@ import { fileURLToPath } from 'node:url'
 import lockfile from 'proper-lockfile'
 
 import {
+  clearHubBuildMarker,
+  collectStaleHubPids,
+  findSockListenerPids,
+  isHubBuildCurrent,
+  isProcessAlive,
+  readHubBuildMarker
+} from './hub-build'
+import {
   HUB_BUSY_EXIT_CODE,
   PACKAGE_VERSION,
   log,
@@ -51,6 +59,7 @@ process.on('SIGTERM', () => shutdownCli('SIGTERM received.'))
 const HUB_STARTUP_TIMEOUT = 5000
 const CONNECT_RETRY_DELAY = 200
 const FAILED_RESTART_DELAY = 5000
+const STALE_HUB_SHUTDOWN_TIMEOUT = 5000
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const HUB_ENTRY = join(HERE, 'hub.mjs')
 
@@ -142,6 +151,81 @@ async function waitForHubStart(child: ChildProcess): Promise<Socket> {
   return socket
 }
 
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (!isProcessAlive(pid)) return true
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  return !isProcessAlive(pid)
+}
+
+async function waitUntilHubUnreachable(timeoutMs: number): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const socket = await connectHub()
+      socket.destroy()
+      await new Promise((r) => setTimeout(r, 100))
+    } catch {
+      return true
+    }
+  }
+  try {
+    const socket = await connectHub()
+    socket.destroy()
+    return false
+  } catch {
+    return true
+  }
+}
+
+async function signalPid(pid: number, signal: NodeJS.Signals): Promise<void> {
+  try {
+    process.kill(pid, signal)
+  } catch (err) {
+    log.warn({ err, pid, signal }, 'Failed to signal Hub process.')
+  }
+}
+
+async function replaceStaleHub(): Promise<void> {
+  const marker = readHubBuildMarker()
+  const sockPids = await findSockListenerPids(SOCK_PATH)
+  const pids = collectStaleHubPids(marker, sockPids)
+  if (!pids.length) {
+    log.warn('Live Hub looks stale but no process id was found; clearing marker and continuing.')
+    clearHubBuildMarker()
+    return
+  }
+
+  log.warn(
+    {
+      pids,
+      fingerprint: marker?.fingerprint.slice(0, 12),
+      hasMarker: Boolean(marker)
+    },
+    'Live Hub is older than the on-disk build. Restarting Hub...'
+  )
+
+  for (const pid of pids) {
+    await signalPid(pid, 'SIGTERM')
+  }
+  for (const pid of pids) {
+    const exited = await waitForProcessExit(pid, STALE_HUB_SHUTDOWN_TIMEOUT)
+    if (!exited) {
+      log.warn({ pid }, 'Stale Hub did not exit after SIGTERM; sending SIGKILL.')
+      await signalPid(pid, 'SIGKILL')
+      await waitForProcessExit(pid, 1000)
+    }
+  }
+
+  clearHubBuildMarker()
+  const gone = await waitUntilHubUnreachable(2000)
+  if (!gone) {
+    throw new Error('Stale Hub is still accepting connections after restart signalling.')
+  }
+}
+
 async function tryBecomeLeaderAndStartHub(): Promise<Socket> {
   let releaseLock: (() => Promise<void>) | undefined
   try {
@@ -178,15 +262,27 @@ async function tryBecomeLeaderAndStartHub(): Promise<Socket> {
   }
 }
 
+async function connectToCurrentHub(): Promise<Socket> {
+  try {
+    const socket = await connectHub()
+    if (isHubBuildCurrent(HUB_ENTRY)) {
+      return socket
+    }
+    socket.destroy()
+    await replaceStaleHub()
+    return tryBecomeLeaderAndStartHub()
+  } catch {
+    log.info('Hub not running. Initiating startup sequence...')
+    return tryBecomeLeaderAndStartHub()
+  }
+}
+
 async function main() {
   log.info({ version: PACKAGE_VERSION }, 'TemPad MCP Client starting...')
 
   while (true) {
     try {
-      const socket = await connectHub().catch(() => {
-        log.info('Hub not running. Initiating startup sequence...')
-        return tryBecomeLeaderAndStartHub()
-      })
+      const socket = await connectToCurrentHub()
       await bridge(socket)
       log.info('Bridge disconnected. Restarting connection process...')
     } catch (err: unknown) {

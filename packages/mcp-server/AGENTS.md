@@ -53,6 +53,7 @@ pnpm -C packages/mcp-server test:coverage
 
 - `src/cli.ts`: MCP stdio entrypoint and Hub startup.
 - `src/hub.ts`: tool routing, WebSocket server, MCP resources.
+- `src/hub-build.ts`: Hub build fingerprint marker so a rebuilt `hub.mjs` replaces a live Hub on the next CLI start.
 - `src/tools.ts`: tool definitions and formatters.
 - `src/request.ts`: pending tool call tracking and timeouts.
 - `src/asset-store.ts`: asset index and cleanup.
@@ -105,4 +106,5 @@ return { image: largeBase64 }
   - `src/asset-store.ts`
   - `src/asset-http-server.ts`
   - `src/shared.ts`
+  - `src/hub-build.ts`
 - Cross-package contract changes should be validated in order: `packages/shared` -> `packages/mcp-server` -> `packages/extension`.

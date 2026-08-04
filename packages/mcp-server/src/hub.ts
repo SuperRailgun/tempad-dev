@@ -22,6 +22,7 @@ import {
 import { randomUUID } from 'node:crypto'
 import { existsSync, rmSync, chmodSync } from 'node:fs'
 import { connect, createServer } from 'node:net'
+import { fileURLToPath } from 'node:url'
 import lockfile from 'proper-lockfile'
 import { WebSocketServer } from 'ws'
 
@@ -33,6 +34,7 @@ import { buildAssetFilename } from './asset-utils'
 import { getMcpServerConfig } from './config'
 import { ExtensionRegistry } from './extension-registry'
 import { attachExtensionSocket } from './extension-socket'
+import { clearHubBuildMarker, writeHubBuildMarker } from './hub-build'
 import MCP_INSTRUCTIONS from './instructions.md?raw'
 import { register, resolve, reject, cleanupForExtension, cleanupAll } from './request'
 import { createExtensionOriginPolicy } from './security'
@@ -548,6 +550,7 @@ function shutdown(): void {
   if (shuttingDown) return
   shuttingDown = true
   log.info('Hub is shutting down...')
+  clearHubBuildMarker()
   consumerSessions.forEach((session) => {
     session.close().catch((err) => {
       log.warn({ err }, 'Failed to close MCP session during shutdown.')
@@ -663,6 +666,14 @@ async function startWebSocketServer(): Promise<{ server: WebSocketServer; port: 
 async function startHubRuntime(): Promise<WebSocketServer> {
   await initializeHubRuntime()
   await listenConsumerSocket()
+  // Record freshness before accepting consumers so a reconnecting CLI does not treat a
+  // brand-new Hub as stale in the window between listen and WebSocket ready.
+  const hubEntryPath = fileURLToPath(import.meta.url)
+  const buildMarker = writeHubBuildMarker(hubEntryPath)
+  log.info(
+    { fingerprint: buildMarker.fingerprint.slice(0, 12), version: buildMarker.version },
+    'Recorded Hub build marker for CLI freshness checks.'
+  )
   netServer.on('error', (err) => {
     log.error({ err }, 'Net server error.')
     process.exit(1)
