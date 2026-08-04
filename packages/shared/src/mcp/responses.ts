@@ -51,7 +51,30 @@ export function buildGetCodeToolResult(payload: GetCodeResult): ToolResponseLike
     summary.push(`Token references included: ${tokenCount}.`)
   }
 
-  summary.push('Read structuredContent for the full code string and metadata.')
+  // Prefer inlining a usable code/token preview for clients that drop structuredContent.
+  if (payload.code) {
+    const previewBudget = Math.min(MCP_SUMMARY_INLINE_BUDGET_BYTES, 6 * 1024)
+    if (utf8Bytes(payload.code) <= previewBudget) {
+      summary.push('Code:')
+      summary.push(payload.code)
+    } else {
+      summary.push(
+        `Code preview omitted (${formatBytes(codeSize)} > ${formatBytes(previewBudget)}); read structuredContent.code when available, or call get_code on a smaller nodeId.`
+      )
+    }
+  }
+
+  if (payload.tokens && tokenCount) {
+    const tokenEntries = Object.entries(payload.tokens)
+    summary.push('Tokens:')
+    summary.push(
+      ...describeInlineList(
+        tokenEntries,
+        ([name, entry]) => `- ${name} (${entry.kind}): ${formatTokenEntryValue(entry.value)}`,
+        'token'
+      )
+    )
+  }
 
   return buildTextToolResult(summary.join('\n'), payload)
 }
@@ -107,34 +130,87 @@ function describeStructureOutline(payload: GetStructureResult): string {
   const nodeCount = countOutlineNodes(roots)
   const lines: string[] = [
     `Returned structure outline with ${formatCount(roots.length, 'root')} and ${formatCount(nodeCount, 'node')}.`,
-    'Top-level nodes:'
+    // Clients such as Cursor often surface only the text block, so the usable tree
+    // (ids, full variant names, variantProperties) must live here — not only in
+    // structuredContent.
+    'Outline:'
   ]
 
+  lines.push(...describeInlineOutlineTree(roots))
   lines.push(
-    ...describeInlineList(
-      roots,
-      (root) => `- ${root.name || 'Unnamed'} [${root.type}] (${root.id})`,
-      'root'
-    )
-  )
-  lines.push(
-    'Call this tool again with a child id as nodeId for more depth, or get_code / get_design_context for implementation.'
+    'Call this tool again with a child id as nodeId for more depth, or use get_screenshot / get_token_defs for visual and token evidence.'
   )
 
   return lines.join('\n')
 }
 
-export function buildGetTokenDefsToolResult(payload: GetTokenDefsResult): ToolResponseLike {
-  const count = Object.keys(payload).length
-  const summary =
-    count === 0
-      ? 'No token definitions were resolved.'
-      : `Resolved ${formatCount(count, 'token definition')}.`
+/**
+ * Depth-first outline lines for the text summary. Stops when the shared inline
+ * budget is exhausted so large trees still leave actionable head nodes visible.
+ */
+function describeInlineOutlineTree(roots: GetStructureResult['roots']): string[] {
+  type FlatLine = { depth: number; node: GetStructureResult['roots'][number] }
+  const flat: FlatLine[] = []
 
-  return buildTextToolResult(
-    `${summary}\nRead structuredContent for token values and aliases.`,
-    payload
+  const walk = (nodes: GetStructureResult['roots'], depth: number) => {
+    for (const node of nodes) {
+      flat.push({ depth, node })
+      if (node.children?.length) walk(node.children, depth + 1)
+    }
+  }
+  walk(roots, 0)
+
+  return describeInlineList(
+    flat,
+    ({ depth, node }) => {
+      const indent = '  '.repeat(depth)
+      const size =
+        Number.isFinite(node.width) && Number.isFinite(node.height)
+          ? ` ${node.width}x${node.height}`
+          : ''
+      const variants = formatVariantProperties(node.variantProperties)
+      return `${indent}- ${node.name || 'Unnamed'} [${node.type}] (${node.id})${size}${variants}`
+    },
+    'node'
   )
+}
+
+function formatVariantProperties(variants: Record<string, string> | undefined): string {
+  if (!variants) return ''
+  const entries = Object.entries(variants)
+  if (!entries.length) return ''
+  return ` {${entries.map(([key, value]) => `${key}=${value}`).join(', ')}}`
+}
+
+export function buildGetTokenDefsToolResult(payload: GetTokenDefsResult): ToolResponseLike {
+  const entries = Object.entries(payload)
+  const lines: string[] = [
+    entries.length === 0
+      ? 'No token definitions were resolved.'
+      : `Resolved ${formatCount(entries.length, 'token definition')}.`
+  ]
+
+  if (entries.length) {
+    // Inline values so Cursor (and other clients that drop structuredContent) can
+    // still read literal colors/sizes without a fallback script.
+    lines.push('Tokens:')
+    lines.push(
+      ...describeInlineList(
+        entries,
+        ([name, entry]) => `- ${name} (${entry.kind}): ${formatTokenEntryValue(entry.value)}`,
+        'token'
+      )
+    )
+  }
+
+  return buildTextToolResult(lines.join('\n'), payload)
+}
+
+function formatTokenEntryValue(value: string | Record<string, string>): string {
+  if (typeof value === 'string') return value
+  return Object.entries(value)
+    .map(([mode, literal]) => `${mode}=${literal}`)
+    .join('; ')
 }
 
 export function buildGetScreenshotToolResult(payload: GetScreenshotResult): ToolResponseLike {

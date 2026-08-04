@@ -52,27 +52,91 @@ describe('mcp/responses helpers', () => {
     const result = buildGetCodeToolResult(payload)
     expect(result.structuredContent).toEqual(payload)
     expect(result.content?.[0]?.text).toContain('Shell response')
+    expect(result.content?.[0]?.text).toContain('Code:')
+    expect(result.content?.[0]?.text).toContain('<div>Hello</div>')
     expect(result.content?.[0]?.text).not.toContain('Next: call get_code with')
+    expect(result.content?.[0]?.text).not.toContain('Read structuredContent')
   })
 
   it('builds structure and token tool summaries with structured content', () => {
     const structure = buildGetStructureToolResult({
-      roots: [{ id: '1', name: 'Root', type: 'FRAME', x: 0, y: 0, width: 10, height: 10 }]
+      roots: [
+        {
+          id: '1',
+          name: 'Button 按钮',
+          type: 'COMPONENT_SET',
+          x: 0,
+          y: 0,
+          width: 570,
+          height: 314,
+          children: [
+            {
+              id: '2',
+              name: 'variant=base, theme=primary, size=large, shape=rect',
+              type: 'COMPONENT',
+              x: 42,
+              y: 34,
+              width: 85,
+              height: 32,
+              variantProperties: { theme: 'primary', size: 'large', shape: 'rect' }
+            }
+          ]
+        }
+      ]
     })
     expect(structure.structuredContent).toEqual({
-      roots: [{ id: '1', name: 'Root', type: 'FRAME', x: 0, y: 0, width: 10, height: 10 }]
+      roots: [
+        {
+          id: '1',
+          name: 'Button 按钮',
+          type: 'COMPONENT_SET',
+          x: 0,
+          y: 0,
+          width: 570,
+          height: 314,
+          children: [
+            {
+              id: '2',
+              name: 'variant=base, theme=primary, size=large, shape=rect',
+              type: 'COMPONENT',
+              x: 42,
+              y: 34,
+              width: 85,
+              height: 32,
+              variantProperties: { theme: 'primary', size: 'large', shape: 'rect' }
+            }
+          ]
+        }
+      ]
     })
-    expect(structure.content?.[0]?.text).toContain('Returned structure outline')
-    expect(structure.content?.[0]?.text).toContain('- Root [FRAME] (1)')
-    expect(structure.content?.[0]?.text).not.toContain('structuredContent')
+    const structureText = structure.content?.[0]?.text ?? ''
+    expect(structureText).toContain('Returned structure outline')
+    expect(structureText).toContain('Outline:')
+    expect(structureText).toContain('- Button 按钮 [COMPONENT_SET] (1) 570x314')
+    expect(structureText).toContain(
+      'variant=base, theme=primary, size=large, shape=rect [COMPONENT] (2) 85x32 {theme=primary, size=large, shape=rect}'
+    )
+    expect(structureText).not.toContain('Read structuredContent')
 
     const tokens = buildGetTokenDefsToolResult({
       '--color-primary': {
         kind: 'color',
         value: '#fff'
+      },
+      '--size-m': {
+        kind: 'number',
+        value: {
+          'basic 基础:light': '32px',
+          'basic 基础:dark': '32px'
+        }
       }
     })
-    expect(tokens.content?.[0]?.text).toContain('Resolved 1 token definition')
+    const tokenText = tokens.content?.[0]?.text ?? ''
+    expect(tokenText).toContain('Resolved 2 token definitions')
+    expect(tokenText).toContain('Tokens:')
+    expect(tokenText).toContain('- --color-primary (color): #fff')
+    expect(tokenText).toContain('- --size-m (number): basic 基础:light=32px; basic 基础:dark=32px')
+    expect(tokenText).not.toContain('Read structuredContent')
   })
 
   it('summarizes download_assets exports, raw images and truncation', () => {

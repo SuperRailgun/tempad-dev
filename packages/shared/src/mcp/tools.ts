@@ -150,6 +150,11 @@ export type OutlineNode = {
   y: number
   width: number
   height: number
+  /**
+   * Variant axes for COMPONENT / INSTANCE nodes (e.g. theme=primary, size=large).
+   * Prefer this over parsing the layer name — Figma names are often truncated in summaries.
+   */
+  variantProperties?: Record<string, string>
   children?: OutlineNode[]
 }
 export type DocumentPage = {

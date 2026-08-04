@@ -82,6 +82,51 @@ describe('mcp/tools/structure', () => {
     expect(result.roots[0]?.name.length).toBeLessThanOrEqual(48)
     expect(result.roots[0]?.x).toBe(0.1)
   })
+
+  it('keeps COMPONENT variant names intact and preserves variantProperties', () => {
+    const longVariantName =
+      'variant=base, theme=primary, size=large, shape=rect, state=default, content=text'
+    vi.mocked(buildSemanticTree).mockReturnValue({ roots: [] } as unknown as ReturnType<
+      typeof buildSemanticTree
+    >)
+    vi.mocked(semanticTreeToOutline).mockReturnValue([
+      {
+        id: 'set-1',
+        name: 'Button 按钮',
+        type: 'COMPONENT_SET',
+        x: 0,
+        y: 0,
+        width: 570,
+        height: 314,
+        children: [
+          {
+            id: 'comp-1',
+            name: longVariantName,
+            type: 'COMPONENT',
+            x: 42,
+            y: 34,
+            width: 85,
+            height: 32,
+            variantProperties: {
+              theme: 'primary',
+              size: 'large',
+              shape: 'rect'
+            }
+          }
+        ]
+      }
+    ] as never)
+
+    const result = handleGetStructure([])
+    const variant = result.roots[0]?.children?.[0]
+    expect(variant?.name).toBe(longVariantName)
+    expect(variant?.name.includes('...')).toBe(false)
+    expect(variant?.variantProperties).toEqual({
+      theme: 'primary',
+      size: 'large',
+      shape: 'rect'
+    })
+  })
 })
 
 describe('mcp/tools/structure document pages', () => {

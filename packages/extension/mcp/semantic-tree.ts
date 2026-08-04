@@ -41,6 +41,8 @@ export type SemanticNode = {
   assetKind?: 'vector' | 'image'
   dataHint?: DataHint
   autoLayout?: AutoLayoutSummary
+  /** Variant axes from COMPONENT.variantProperties or INSTANCE VARIANT props. */
+  variantProperties?: Record<string, string>
   capped?: boolean
   children: SemanticNode[]
 }
@@ -269,6 +271,41 @@ function summarizeComponentProperties(node: InstanceNode): string | undefined {
   return entries.length ? entries.map((e) => `[${e}]`).join('') : undefined
 }
 
+/**
+ * Prefer structured variant axes over parsing the (often truncated) layer name.
+ * COMPONENT exposes `variantProperties`; INSTANCE exposes VARIANT componentProperties.
+ */
+export function extractVariantProperties(node: SceneNode): Record<string, string> | undefined {
+  if (node.type === 'COMPONENT') {
+    try {
+      const props = (node as ComponentNode).variantProperties
+      if (!props || typeof props !== 'object') return undefined
+      const entries = Object.entries(props).filter(
+        ([key, value]) => key && typeof value === 'string' && value.length > 0
+      )
+      if (!entries.length) return undefined
+      return Object.fromEntries(entries)
+    } catch {
+      return undefined
+    }
+  }
+
+  if (node.type === 'INSTANCE') {
+    const properties = getComponentProperties(node as InstanceNode)
+    if (!properties) return undefined
+    const variants: Record<string, string> = {}
+    for (const [rawKey, prop] of Object.entries(properties)) {
+      if (!prop || prop.type !== 'VARIANT') continue
+      if (typeof prop.value !== 'string' || !prop.value.trim()) continue
+      const key = rawKey.split('#')[0]
+      if (key) variants[key] = prop.value
+    }
+    return Object.keys(variants).length ? variants : undefined
+  }
+
+  return undefined
+}
+
 function summarizeLayoutHint(node: SceneNode): string | undefined {
   const layoutSource = resolveAutoLayoutSource(node)
   // Explicit auto layout is obvious; only hint when not explicitly set.
@@ -321,6 +358,11 @@ function visit(
       children: []
     }
 
+    const variantProperties = extractVariantProperties(node)
+    if (variantProperties) {
+      semanticNode.variantProperties = variantProperties
+    }
+
     const hint = composeDataHint(node)
     if (hint) {
       semanticNode.dataHint = hint
@@ -352,6 +394,11 @@ function visit(
     ...classifyAsset(node),
     autoLayout: extractAutoLayout(node),
     children
+  }
+
+  const variantProperties = extractVariantProperties(node)
+  if (variantProperties) {
+    semanticNode.variantProperties = variantProperties
   }
 
   const hint = composeDataHint(node)
@@ -489,6 +536,7 @@ export function semanticTreeToOutline(nodes: SemanticNode[]): OutlineNode[] {
     y: node.bounds.y,
     width: node.bounds.width,
     height: node.bounds.height,
+    ...(node.variantProperties ? { variantProperties: node.variantProperties } : {}),
     ...(node.children.length ? { children: semanticTreeToOutline(node.children) } : {})
   }))
 }

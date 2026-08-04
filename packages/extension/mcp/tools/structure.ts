@@ -9,8 +9,17 @@ import {
 import { buildSemanticTree, semanticTreeToOutline } from '@/mcp/semantic-tree'
 
 const STRUCTURE_NODE_LIMIT_STEPS = [240, 180, 140, 100, 70, 50]
+/** Default cap for ordinary layer names (keeps large outlines compact). */
 const STRUCTURE_MAX_NAME_CHARS = 48
+/**
+ * COMPONENT / INSTANCE / COMPONENT_SET names encode variant axes
+ * (`theme=primary, size=large, shape=rect, ...`). Truncating them to 48 chars
+ * collapses distinct variants into identical `shap...` labels — keep them whole.
+ */
+const STRUCTURE_VARIANT_NAME_MAX_CHARS = 256
 const STRUCTURE_COORD_PRECISION = 10
+
+const VARIANT_BEARING_TYPES = new Set(['COMPONENT', 'INSTANCE', 'COMPONENT_SET'])
 
 type StructureNode = GetStructureResult['roots'][number]
 
@@ -125,12 +134,17 @@ function compactByNodeLimit(roots: StructureNode[], nodeLimit: number): Structur
 
     const compact: StructureNode = {
       id: sanitizeId(node.id, `node-${seen}`),
-      name: sanitizeName(node.name),
+      name: sanitizeName(node.name, node.type),
       type: sanitizeType(node.type),
       x: sanitizeNumber(node.x),
       y: sanitizeNumber(node.y),
       width: sanitizeNumber(node.width),
       height: sanitizeNumber(node.height)
+    }
+
+    const variantProperties = sanitizeVariantProperties(node.variantProperties)
+    if (variantProperties) {
+      compact.variantProperties = variantProperties
     }
 
     if (Array.isArray(node.children) && node.children.length && seen < nodeLimit) {
@@ -155,12 +169,29 @@ function compactByNodeLimit(roots: StructureNode[], nodeLimit: number): Structur
   return compactRoots
 }
 
-function sanitizeName(value: unknown): string {
+function sanitizeName(value: unknown, type?: string): string {
   if (typeof value !== 'string') return ''
   const normalized = value.replace(/\s+/g, ' ').trim()
   if (!normalized) return ''
-  if (normalized.length <= STRUCTURE_MAX_NAME_CHARS) return normalized
-  return `${normalized.slice(0, Math.max(0, STRUCTURE_MAX_NAME_CHARS - 3))}...`
+  const maxChars =
+    type && VARIANT_BEARING_TYPES.has(type)
+      ? STRUCTURE_VARIANT_NAME_MAX_CHARS
+      : STRUCTURE_MAX_NAME_CHARS
+  if (normalized.length <= maxChars) return normalized
+  return `${normalized.slice(0, Math.max(0, maxChars - 3))}...`
+}
+
+function sanitizeVariantProperties(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const entries: Array<[string, string]> = []
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const key = typeof rawKey === 'string' ? rawKey.trim() : ''
+    if (!key || typeof rawValue !== 'string') continue
+    const trimmed = rawValue.trim()
+    if (!trimmed) continue
+    entries.push([key.slice(0, 64), trimmed.slice(0, 128)])
+  }
+  return entries.length ? Object.fromEntries(entries) : undefined
 }
 
 function sanitizeId(value: unknown, fallback: string): string {

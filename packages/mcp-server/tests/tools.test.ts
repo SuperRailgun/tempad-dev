@@ -293,7 +293,7 @@ describe('tools response helpers', () => {
 })
 
 describe('tool exposure and official aliases', () => {
-  it('exposes every tool to MCP clients', () => {
+  it('keeps get_code defined but unexposed to MCP clients', () => {
     expect(TOOL_DEFS.map((tool) => tool.name)).toEqual([
       'get_code',
       'get_token_defs',
@@ -302,7 +302,11 @@ describe('tool exposure and official aliases', () => {
       'download_assets',
       'get_assets'
     ])
-    expect(TOOL_DEFS.filter((tool) => 'exposed' in tool && tool.exposed === false)).toEqual([])
+    expect(
+      TOOL_DEFS.filter((tool) => 'exposed' in tool && tool.exposed === false).map(
+        (tool) => tool.name
+      )
+    ).toEqual(['get_code'])
   })
 
   it('registers official Figma MCP aliases for their TemPad implementations', () => {
