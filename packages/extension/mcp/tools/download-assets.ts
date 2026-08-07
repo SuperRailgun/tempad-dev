@@ -218,6 +218,7 @@ function collectImageFillHashes(nodes: SceneNode[]): {
     }
 
     const node = queue[cursor]
+    if (!node) continue
     cursor += 1
 
     for (const hash of getImageFillHashes(node)) {

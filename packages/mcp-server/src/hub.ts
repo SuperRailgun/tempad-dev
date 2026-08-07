@@ -1,4 +1,4 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
 import type {
   AssetDescriptor,
   GetAssetsParametersInput,
@@ -47,7 +47,8 @@ import {
   log,
   RUNTIME_DIR,
   SOCK_PATH,
-  ensureDir
+  ensureDir,
+  getRecordProperty
 } from './shared'
 import {
   TOOL_DEFS,
@@ -65,6 +66,7 @@ const SOCKET_PROBE_TIMEOUT_MS = 300
 const {
   wsPortCandidates,
   toolTimeoutMs,
+  getCodeTimeoutMs,
   maxPayloadBytes,
   maxExtensionConnections,
   autoActivateGraceMs,
@@ -85,8 +87,13 @@ let wss: WebSocketServer | null = null
 const consumerSessions = new Set<McpServer>()
 type RegisterToolOptions = Parameters<McpServer['registerTool']>[1]
 type McpInputSchema = RegisterToolOptions['inputSchema']
-type McpOutputSchema = RegisterToolOptions['outputSchema']
 type ToolResponse = CallToolResult
+type ToolRegistrationOptions = {
+  annotations?: ToolAnnotations
+  description: string
+  inputSchema: ZodType
+  outputSchema?: ZodType
+}
 type SchemaOutput<Schema extends ZodType> = Schema['_output']
 type ToolMetadataEntry = (typeof TOOL_DEFS)[number]
 type ExtensionToolMetadata = Extract<ToolMetadataEntry, { target: 'extension' }>
@@ -94,13 +101,6 @@ type HubToolMetadata = Extract<ToolMetadataEntry, { target: 'hub' }>
 
 type HubToolWithHandler<T extends HubToolMetadata = HubToolMetadata> = T & {
   handler: (args: SchemaOutput<T['parameters']>) => Promise<ToolResponse>
-}
-
-function getRecordProperty(record: unknown, key: string): unknown {
-  if (!record || typeof record !== 'object') {
-    return undefined
-  }
-  return Reflect.get(record, key)
 }
 
 type SocketProbeResult = 'live' | 'missing' | { staleCode: string }
@@ -373,7 +373,7 @@ function registerProxiedTool<T extends ExtensionTool>(
 
   const registerToolFn = mcp.registerTool.bind(mcp) as (
     name: string,
-    options: { description: string; inputSchema: ZodType; outputSchema?: ZodType },
+    options: ToolRegistrationOptions,
     handler: (args: unknown) => Promise<CallToolResult>
   ) => unknown
 
@@ -391,7 +391,8 @@ function registerProxiedTool<T extends ExtensionTool>(
         )
       }
 
-      const registration = register<Result>(activeExt.id, toolTimeoutMs)
+      const timeoutMs = tool.name === 'get_code' ? getCodeTimeoutMs : toolTimeoutMs
+      const registration = register<Result>(activeExt.id, timeoutMs)
       requestId = registration.requestId
 
       const message: ToolCallMessage = {
@@ -433,6 +434,7 @@ function registerProxiedTool<T extends ExtensionTool>(
   registerToolFn(
     exposedName,
     {
+      annotations: tool.annotations,
       description: alias?.description ?? tool.description,
       inputSchema: schema as unknown as McpInputSchema
     },
@@ -446,21 +448,18 @@ function registerLocalTool(mcp: McpServer, tool: HubOnlyTool): void {
 
   const registerToolFn = mcp.registerTool.bind(mcp) as (
     name: string,
-    options: { description: string; inputSchema: ZodType; outputSchema?: ZodType },
+    options: ToolRegistrationOptions,
     handler: (args: unknown) => Promise<CallToolResult>
   ) => unknown
 
-  const registrationOptions: {
-    description: string
-    inputSchema: McpInputSchema
-    outputSchema?: McpOutputSchema
-  } = {
+  const registrationOptions: ToolRegistrationOptions = {
+    annotations: tool.annotations,
     description: tool.description,
-    inputSchema: schema as unknown as McpInputSchema
+    inputSchema: schema
   }
 
   if (tool.outputSchema) {
-    registrationOptions.outputSchema = tool.outputSchema as unknown as McpOutputSchema
+    registrationOptions.outputSchema = tool.outputSchema
   }
 
   const registerHandler = async (args: unknown) => {

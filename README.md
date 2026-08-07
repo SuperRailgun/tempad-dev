@@ -205,17 +205,26 @@ Current available plugins:
 
 TemPad Dev ships an agent integration for coding agents and IDEs. The integration combines:
 
-- an [MCP](https://modelcontextprotocol.io/) server that lets agents pull code and context directly from the node you have selected in Figma
-- an agent skill that teaches the agent how to interpret that evidence in the current repository
+- an [MCP](https://modelcontextprotocol.io/) server that lets agents inspect Figma and apply
+  declarative canvas results when the current Figma Design file is editable
+- two agent skills: one for implementing Figma evidence in code, and one for designing on the Figma canvas with accessible component definitions and bounded design-system resources
 
-Figma also provides official [remote and desktop MCP servers](https://developers.figma.com/docs/figma-mcp-server/), with the remote server recommended for most users. TemPad Dev is an open, local-control complement for teams that specifically want an inspectable browser-extension pipeline, the existing read-only inspection workflow, programmable output plugins, canonical agent-facing code/token IR, and an explicit context budget. It provides design evidence and a code starting point; the coding agent remains responsible for adapting that evidence to the repository, validating behavior, and producing the final implementation.
+Figma also provides official [remote and desktop MCP servers](https://developers.figma.com/docs/figma-mcp-server/), with the remote server recommended for most users. TemPad Dev is an open, local-control complement for teams that specifically want an inspectable browser-extension pipeline, local inspection and MCP-gated declarative canvas authoring, programmable output plugins, canonical agent-facing code/token IR, and an explicit context budget. It provides design evidence and a code starting point; the coding agent remains responsible for adapting that evidence to the repository, validating behavior, and producing the final implementation.
 
 With the TemPad Dev panel open and MCP enabled, the MCP server exposes:
 
 - `get_code`: High-fidelity JSX/Vue + TailwindCSS code output by default, plus attached assets and the codegen preset/config used.
-- `get_structure`: A structural outline (ids, types, geometry) for the current selection, a whole page when given a page id, or the open file's page list when nothing is selected.
-- `get_token_defs`: Token values for the requested names, or every token used by the current selection.
-- `get_screenshot`: A rendered PNG of the current selection for visual verification.
+- `get_design_system`: An immutable, deterministic catalog. It returns compact pages of component
+  definitions on accessible pages plus local or directly referenced variable, collection/mode,
+  style, and shader definitions without inspecting canvas usage or loading every page. Cursor
+  continuation exposes omitted definitions; exact-ref lookup returns one bounded definition.
+- `apply_canvas`: One restricted HTML + deterministic Tailwind utility desired result using primitives, catalog
+  component tags, short design-system refs, typed Figma-only state, sanitized SVG, and
+  content-addressed images. The extension resolves, validates, diffs, applies, and structurally
+  verifies the result. Authoring requires edit access to the current Figma Design file.
+- `get_structure` (also exposed as `get_metadata`): A structural outline (ids, types, geometry, stable authoring keys) for the current selection, a whole page when given a page id, or the open file's page list when nothing is selected.
+- `get_token_defs` (also exposed as `get_variable_defs`): Token values for the requested names, or every token used by the current selection.
+- `get_screenshot`: A rendered PNG of the current selection for visual verification, returned as an asset URL.
 - `download_assets`: Export renders plus the original uploaded image fills for up to 20 nodes.
 - Binary assets are returned as metadata + HTTP download URLs (`asset.url`) in tool responses. Asset MCP resources are not exposed.
 
@@ -229,9 +238,11 @@ Every tool is also exposed under its official Figma MCP name (`get_design_contex
   <img alt="TemPad Dev agent setup dialog." src="packages/site/public/marketing/mcp-config-light.png" width="600">
 </picture>
 
-1. Install Node.js 18.20.0 or later with `npx`. Keep TemPad Dev open in the Figma tab you want the agent to inspect, then enable **Preferences → Agent integration → MCP access**. When prompted, allow the loopback connection to `127.0.0.1`.
+1. Install Node.js 18.20.0 or later with `npx`. Keep TemPad Dev open in the Figma tab you want the agent to inspect, then enable **Preferences → Agent integration → MCP access**. When prompted, allow the loopback connection to `127.0.0.1`. Canvas authoring is available while MCP access is enabled and the current Figma Design file is editable.
 2. Select **Set up agents**, choose Codex, Cursor, Claude Code, Gemini, VS Code, OpenCode, or TRAE, and follow the displayed path. Use **Other** for another compatible client. The choice only changes the instructions shown; it does not bind or activate an agent.
-3. Prefer the direct action when offered. Every fallback command or config is shown in full for review and copying. Codex and Claude Code plugins include both MCP and the `figma-design-to-code` skill; the other paths show the two required steps separately.
+3. Prefer the direct action when offered. Every fallback command or config is shown in full for review and copying. Codex and Claude Code plugins include MCP plus the `figma-design-to-code` and `figma-canvas-authoring` skills; the other paths show MCP and standalone skills setup separately.
+
+All `npx`-based setup paths use `@tempad-dev/mcp@latest`.
 
 Keep TemPad Dev open with MCP enabled while using it. If multiple Figma files are connected, click the MCP badge in the panel for the file you want the agent to inspect; that file becomes the active context.
 

@@ -4,18 +4,20 @@ import { TEMPAD_MCP_ERROR_CODES } from '@tempad-dev/shared'
 import { describe, expect, it } from 'vitest'
 
 import {
+  TOOL_DEFS,
   coercePayloadToToolResponse,
+  createApplyCanvasToolResponse,
   createAssetsToolResponse,
   createCodeToolResponse,
   createDownloadAssetsToolResponse,
+  createDesignSystemToolResponse,
   createInlineBudgetExceededToolResponse,
   createScreenshotToolResponse,
   createStructureToolResponse,
   createTokenDefsToolResponse,
   createToolErrorResponse,
   getToolAliases,
-  TOOL_ALIAS_DEFS,
-  TOOL_DEFS
+  TOOL_ALIAS_DEFS
 } from '../src/tools'
 
 const codePayload: ToolResultMap['get_code'] = {
@@ -30,6 +32,8 @@ const codePayload: ToolResultMap['get_code'] = {
     }
   }
 }
+const ASSET_HASH = 'a'.repeat(64)
+const SCREENSHOT_HASH = 'd'.repeat(64)
 
 function textContent(block: unknown): string {
   expect(block).toMatchObject({ type: 'text' })
@@ -37,6 +41,53 @@ function textContent(block: unknown): string {
 }
 
 describe('tools response helpers', () => {
+  it('exposes result-oriented canvas authoring tools', () => {
+    expect(
+      new Set(TOOL_DEFS.filter((tool) => tool.exposed !== false).map((tool) => tool.name))
+    ).toEqual(
+      new Set([
+        'get_design_system',
+        'apply_canvas',
+        'get_token_defs',
+        'get_screenshot',
+        'get_structure',
+        'download_assets',
+        'get_assets'
+      ])
+    )
+  })
+
+  it('keeps design-system reads conditional and local authoring catalog-free', () => {
+    const designSystem = TOOL_DEFS.find((tool) => tool.name === 'get_design_system')
+    const applyCanvas = TOOL_DEFS.find((tool) => tool.name === 'apply_canvas')
+
+    expect(designSystem?.description).toContain('Do not call after a user opt-out')
+    expect(designSystem?.description).toContain('merely to create new local resources')
+    expect(applyCanvas?.description).toContain('works without get_design_system or catalogId')
+    expect(applyCanvas?.description).toContain('exact live component id')
+    expect(applyCanvas?.description).toContain('only when explicitly requested')
+    expect(applyCanvas?.description).toContain('exact progressive reference')
+  })
+
+  it('declares read and write behavior for every tool', () => {
+    const applyCanvas = TOOL_DEFS.find((tool) => tool.name === 'apply_canvas')
+    expect(applyCanvas?.annotations).toEqual({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true
+    })
+
+    for (const tool of TOOL_DEFS.filter((definition) => definition.name !== 'apply_canvas')) {
+      expect(tool.annotations).toEqual({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      })
+    }
+  })
+
   it('formats code tool responses with summaries, warnings, assets and tokens', () => {
     const payload: ToolResultMap['get_code'] = {
       ...codePayload,
@@ -49,7 +100,7 @@ describe('tools response helpers', () => {
       },
       assets: [
         {
-          hash: 'a1b2c3d4',
+          hash: ASSET_HASH,
           url: 'https://assets.example.com/a1b2c3d4.png',
           mimeType: 'image/png',
           size: 2048,
@@ -113,7 +164,80 @@ describe('tools response helpers', () => {
     expect(textContent(tokenResult.content[0])).toContain('Resolved 1 token definition')
   })
 
-  it('formats screenshot tool responses with summary text only', () => {
+  it('formats design-system discovery and canvas apply responses', () => {
+    const designSystemPayload: ToolResultMap['get_design_system'] = {
+      catalogId: 'ds_1',
+      components: [
+        {
+          ref: 'c1',
+          tag: 'Button',
+          name: 'Button',
+          props: {}
+        }
+      ],
+      variables: [],
+      collections: [],
+      styles: [
+        {
+          ref: 's1',
+          name: 'Heading',
+          type: 'paint',
+          signature: 'solid'
+        }
+      ],
+      shaders: [{ ref: 'h1', name: 'Aurora', type: 'effect' }]
+    }
+    const designSystemResult = createDesignSystemToolResponse(designSystemPayload)
+    expect(designSystemResult.structuredContent).toEqual(designSystemPayload)
+    expect(textContent(designSystemResult.content[0])).toContain('1 component')
+    expect(textContent(designSystemResult.content[0])).toContain('1 style')
+    expect(textContent(designSystemResult.content[0])).toContain('1 shader')
+
+    const applyPayload: ToolResultMap['apply_canvas'] = {
+      rootNodeId: '2:1',
+      nodeIdsByKey: { root: '2:1' },
+      createdNodeIds: [],
+      updatedNodeIds: ['2:1'],
+      removedNodeIds: [],
+      mutationCount: 1,
+      verification: {
+        status: 'passed',
+        nodesChecked: 1,
+        referencesChecked: 0,
+        warnings: []
+      }
+    }
+    const applyResult = createApplyCanvasToolResponse(applyPayload)
+    expect(applyResult.structuredContent).toEqual({
+      rootNodeId: '2:1',
+      nodeIdsByKey: { root: '2:1' },
+      mutationCount: 1,
+      nodeChanges: { created: 0, updated: 1, removed: 0 },
+      verification: applyPayload.verification
+    })
+    expect(textContent(applyResult.content[0])).toContain('Applied 1 canvas mutation')
+    expect(textContent(applyResult.content[0])).toContain('structuredContent.nodeIdsByKey')
+
+    const removalResult = createApplyCanvasToolResponse({
+      rootNodeId: '2:1',
+      rootRemoved: true,
+      nodeIdsByKey: {},
+      createdNodeIds: [],
+      updatedNodeIds: [],
+      removedNodeIds: ['2:1'],
+      mutationCount: 1,
+      verification: {
+        status: 'passed',
+        nodesChecked: 0,
+        referencesChecked: 0,
+        warnings: []
+      }
+    })
+    expect(textContent(removalResult.content[0])).toContain('Root node is absent')
+    expect(textContent(removalResult.content[0])).not.toContain('Reuse nodeIdsByKey')
+  })
+
+  it('formats screenshot tool responses with a bounded image resource link', () => {
     const payload: ToolResultMap['get_screenshot'] = {
       format: 'png',
       width: 100,
@@ -121,7 +245,7 @@ describe('tools response helpers', () => {
       scale: 2,
       bytes: 2 * 1024 * 1024,
       asset: {
-        hash: 'd4c3b2a1',
+        hash: SCREENSHOT_HASH,
         url: 'https://assets.example.com/d4c3b2a1.png',
         mimeType: 'image/png',
         size: 2 * 1024 * 1024
@@ -131,28 +255,38 @@ describe('tools response helpers', () => {
     const result = createScreenshotToolResponse(payload)
     expect(result.structuredContent).toEqual(payload)
     expect(textContent(result.content[0])).toBe(
-      'Screenshot 100x80 @2x (2.0 MB) - Download: https://assets.example.com/d4c3b2a1.png'
+      'Screenshot 100x80 @2x (2.0 MB). Inspect the linked PNG for visual verification.'
     )
-    expect(result.content).toHaveLength(1)
+    expect(result.content[1]).toEqual({
+      type: 'resource_link',
+      uri: 'https://assets.example.com/d4c3b2a1.png',
+      name: `Figma screenshot ${SCREENSHOT_HASH}.png`,
+      description: '100x80 rendered Figma node',
+      mimeType: 'image/png',
+      size: 2 * 1024 * 1024
+    })
+    expect(result.content).toHaveLength(2)
   })
 
   it('formats asset tool responses with summary text and structured content', () => {
     const payload: ToolResultMap['get_assets'] = {
       assets: [
         {
-          hash: 'deadbeef',
-          url: 'https://assets.example.com/deadbeef.png',
+          hash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          url: 'https://assets.example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png',
           mimeType: 'image/png',
           size: 1024
         }
       ],
-      missing: ['beefcafe']
+      missing: ['bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb']
     }
 
     const result = createAssetsToolResponse(payload)
     expect(result.structuredContent).toEqual(payload)
     expect(textContent(result.content[0])).toContain('Resolved 1 asset')
-    expect(textContent(result.content[0])).toContain('Missing: beefcafe')
+    expect(textContent(result.content[0])).toContain(
+      'Missing: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    )
   })
 
   it('formats download_assets responses with export and raw image summaries', () => {
@@ -189,6 +323,12 @@ describe('tools response helpers', () => {
 
     const downloadAssets = createInlineBudgetExceededToolResponse('download_assets', 70000)
     expect(textContent(downloadAssets.content[0])).toContain('Request fewer nodeIds')
+    expect(
+      textContent(createInlineBudgetExceededToolResponse('apply_canvas', 70000).content[0])
+    ).toContain('smaller desired subtree')
+    expect(
+      textContent(createInlineBudgetExceededToolResponse('get_design_system', 70000).content[0])
+    ).toContain('catalog cursor')
   })
 
   it('coerces payloads to MCP CallToolResult', () => {
@@ -289,6 +429,93 @@ describe('tools response helpers', () => {
     expect(() =>
       createDownloadAssetsToolResponse(null as unknown as ToolResultMap['download_assets'])
     ).toThrow(/Invalid download_assets payload/)
+    expect(() =>
+      createDesignSystemToolResponse({
+        catalogId: null
+      } as unknown as ToolResultMap['get_design_system'])
+    ).toThrow(/Invalid get_design_system payload/)
+    expect(() =>
+      createDesignSystemToolResponse({
+        catalogId: 'ds_1',
+        components: [{ ref: 'c1' }],
+        variables: [],
+        collections: [],
+        styles: []
+      } as unknown as ToolResultMap['get_design_system'])
+    ).toThrow(/Invalid get_design_system payload/)
+    expect(() =>
+      createDesignSystemToolResponse({
+        catalogId: 'ds_1',
+        components: [],
+        variables: [],
+        collections: [],
+        styles: {}
+      } as unknown as ToolResultMap['get_design_system'])
+    ).toThrow(/Invalid get_design_system payload/)
+    expect(() =>
+      createDesignSystemToolResponse({
+        catalogId: 'ds_1',
+        components: [],
+        variables: [],
+        collections: [],
+        styles: [],
+        shaders: {}
+      } as unknown as ToolResultMap['get_design_system'])
+    ).toThrow(/Invalid get_design_system payload/)
+    expect(() =>
+      createDesignSystemToolResponse(null as unknown as ToolResultMap['get_design_system'])
+    ).toThrow(/Invalid get_design_system payload/)
+    expect(() =>
+      createApplyCanvasToolResponse({
+        rootNodeId: '1:1',
+        nodeIdsByKey: {},
+        createdNodeIds: [],
+        updatedNodeIds: [],
+        mutationCount: 0
+      } as unknown as ToolResultMap['apply_canvas'])
+    ).toThrow(/Invalid apply_canvas payload/)
+    expect(() =>
+      createApplyCanvasToolResponse(null as unknown as ToolResultMap['apply_canvas'])
+    ).toThrow(/Invalid apply_canvas payload/)
+    expect(() =>
+      createApplyCanvasToolResponse({
+        rootNodeId: '1:1',
+        nodeIdsByKey: { root: 1 },
+        createdNodeIds: [],
+        updatedNodeIds: [],
+        removedNodeIds: [],
+        mutationCount: 0,
+        verification: {
+          status: 'passed',
+          nodesChecked: 1,
+          referencesChecked: 0,
+          warnings: []
+        }
+      } as unknown as ToolResultMap['apply_canvas'])
+    ).toThrow(/Invalid apply_canvas payload/)
+    expect(() =>
+      createApplyCanvasToolResponse({
+        rootNodeId: '1:1',
+        rootRemoved: false,
+        nodeIdsByKey: {},
+        createdNodeIds: [],
+        updatedNodeIds: [],
+        removedNodeIds: [],
+        mutationCount: 0
+      } as unknown as ToolResultMap['apply_canvas'])
+    ).toThrow(/Invalid apply_canvas payload/)
+    expect(() =>
+      createApplyCanvasToolResponse(
+        Object.assign([], {
+          rootNodeId: '1:1',
+          nodeIdsByKey: {},
+          createdNodeIds: [],
+          updatedNodeIds: [],
+          removedNodeIds: [],
+          mutationCount: 0
+        }) as unknown as ToolResultMap['apply_canvas']
+      )
+    ).toThrow(/Invalid apply_canvas payload/)
   })
 })
 
@@ -296,6 +523,8 @@ describe('tool exposure and official aliases', () => {
   it('keeps get_code defined but unexposed to MCP clients', () => {
     expect(TOOL_DEFS.map((tool) => tool.name)).toEqual([
       'get_code',
+      'get_design_system',
+      'apply_canvas',
       'get_token_defs',
       'get_screenshot',
       'get_structure',

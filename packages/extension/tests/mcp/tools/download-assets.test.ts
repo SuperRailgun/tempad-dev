@@ -127,8 +127,8 @@ describe('mcp/tools/download-assets', () => {
 
     const vector = await handleDownloadAssets([vectorNode], { defaultFormat: 'svg' })
     expect(vectorNode.exportAsync).toHaveBeenCalledWith({ format: 'SVG' })
-    expect(vector.exports[0]).toMatchObject({ format: 'svg' })
-    expect(vector.exports[0].scale).toBeUndefined()
+    expect(vector.exports[0]!).toMatchObject({ format: 'svg' })
+    expect(vector.exports[0]!.scale).toBeUndefined()
 
     const pdf = await handleDownloadAssets([createNode({ id: 'pdf' })], { defaultFormat: 'pdf' })
     expect(pdf.exports[0]).toMatchObject({ format: 'pdf' })
@@ -210,7 +210,7 @@ describe('mcp/tools/download-assets', () => {
 
     expect(result.rawImagesTruncated).toBe(true)
     expect(result.rawImages.map((entry) => entry.figmaImageHash)).not.toContain('image-deep')
-    expect(result.rawImages[0].figmaImageHash).toBe('image-shallow-0')
+    expect(result.rawImages[0]!.figmaImageHash).toBe('image-shallow-0')
   })
 
   it('flags truncation when the subtree exceeds the raw image cap', async () => {

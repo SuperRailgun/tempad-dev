@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const originalBtoa = globalThis.btoa
+const SKILLS_SOURCE_URL =
+  'https://github.com/ecomfe/tempad-dev/tree/main/agent-plugins/tempad-dev/skills'
+const DESIGN_TO_CODE_SKILL_URL = `${SKILLS_SOURCE_URL}/figma-design-to-code`
+const CANVAS_AUTHORING_SKILL_URL = `${SKILLS_SOURCE_URL}/figma-canvas-authoring`
+const SKILLS_INSTALL_COMMAND = `npx skills add ${SKILLS_SOURCE_URL} --skill figma-design-to-code figma-canvas-authoring`
 
 function restoreBtoa() {
   if (originalBtoa) {
@@ -40,7 +45,7 @@ describe('shared/mcp/install', () => {
         }
       }
     })
-    expect(mcp.AGENT_SKILL_INSTALL_COMMAND).toContain('npx skills add')
+    expect(mcp.AGENT_SKILLS_INSTALL_COMMAND).toBe(SKILLS_INSTALL_COMMAND)
 
     const vscodeDeepLink = mcp.MCP_CLIENTS_BY_ID.vscode.deepLink
     expect(vscodeDeepLink).toMatch(/^vscode:mcp\/install\?/)
@@ -127,15 +132,16 @@ describe('shared/mcp/install', () => {
         value: expect.stringContaining('codex plugin marketplace add ecomfe/tempad-dev')
       })
     ])
-    expect(decodeURIComponent(codex.actions[0]?.value ?? '')).toContain(
-      'codex plugin add tempad-dev@tempad-dev'
-    )
+    const codexPluginPrompt = decodeURIComponent(codex.actions[0]?.value ?? '')
+    expect(codexPluginPrompt).toContain('codex plugin add tempad-dev@tempad-dev')
+    expect(codexPluginPrompt).toContain('figma-design-to-code')
+    expect(codexPluginPrompt).toContain('figma-canvas-authoring')
 
     const claude = mcp.AGENT_INTEGRATIONS_BY_ID.claude
     expect(claude.actions[0]?.value).toMatch(/^claude-cli:\/\/open\?q=/)
-    expect(decodeURIComponent(claude.actions[0]?.value ?? '')).toContain(
-      'claude plugin install tempad-dev@tempad-dev'
-    )
+    const claudePluginPrompt = decodeURIComponent(claude.actions[0]?.value ?? '')
+    expect(claudePluginPrompt).toContain('claude plugin install tempad-dev@tempad-dev')
+    expect(claudePluginPrompt).toContain('figma-canvas-authoring')
 
     const cursor = mcp.AGENT_INTEGRATIONS_BY_ID.cursor
     expect(JSON.parse(cursor.actions[1]?.value ?? '')).toHaveProperty(
@@ -143,16 +149,16 @@ describe('shared/mcp/install', () => {
       'npx'
     )
     expect(cursor.actions.map(({ id }) => id)).toEqual(['mcp-deep-link', 'mcp-config', 'skill-cli'])
-    expect(cursor.actions[2]?.value).toBe(
-      'npx skills add https://github.com/ecomfe/tempad-dev/tree/main/skill --global --agent cursor'
-    )
 
     const gemini = mcp.AGENT_INTEGRATIONS_BY_ID.gemini
-    expect(gemini.actions.map(({ id }) => id)).toEqual(['mcp-cli', 'skill-cli'])
+    expect(gemini.actions.map(({ id }) => id)).toEqual([
+      'mcp-cli',
+      'skill-design-to-code-cli',
+      'skill-canvas-authoring-cli'
+    ])
     expect(gemini.actions[0]?.value).toContain('gemini mcp add --scope user')
-    expect(gemini.actions[1]?.value).toBe(
-      'gemini skills install https://github.com/ecomfe/tempad-dev/tree/main/skill'
-    )
+    expect(gemini.actions[1]?.value).toBe(`gemini skills install ${DESIGN_TO_CODE_SKILL_URL}`)
+    expect(gemini.actions[2]?.value).toBe(`gemini skills install ${CANVAS_AUTHORING_SKILL_URL}`)
 
     const vscode = mcp.AGENT_INTEGRATIONS_BY_ID.vscode
     expect(vscode.actions.map(({ id }) => id)).toEqual(['mcp-deep-link', 'mcp-cli', 'skill-cli'])
@@ -172,10 +178,17 @@ describe('shared/mcp/install', () => {
         fallbackValue: expect.stringMatching(/^trae-cn:\/\//)
       })
     )
-    expect(mcp.AGENT_INTEGRATIONS_BY_ID.trae.actions[1]?.id).toBe('skill-cli')
-    expect(mcp.AGENT_INTEGRATIONS_BY_ID.trae.actions[1]?.value).toContain(
-      '--global --agent trae --agent trae-cn'
-    )
+    for (const [id, agent] of [
+      ['cursor', 'cursor'],
+      ['vscode', 'github-copilot'],
+      ['opencode', 'opencode'],
+      ['trae', 'trae']
+    ] as const) {
+      const skillAction = mcp.AGENT_INTEGRATIONS_BY_ID[id].actions.find(
+        ({ id: actionId }) => actionId === 'skill-cli'
+      )
+      expect(skillAction?.value).toBe(`${SKILLS_INSTALL_COMMAND} --global --agent ${agent}`)
+    }
   })
 
   it('falls back to Buffer when btoa is unavailable', async () => {

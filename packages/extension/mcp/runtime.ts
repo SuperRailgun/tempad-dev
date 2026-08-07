@@ -22,7 +22,9 @@ import { selection } from '@/ui/state'
 import type { GetCodeRuntimeOptions } from './tools/code'
 
 import { createCodedError } from './errors'
+import { handleApplyCanvas } from './tools/canvas'
 import { handleGetCode as runGetCode } from './tools/code'
+import { handleGetDesignSystem } from './tools/design-system'
 import { handleDownloadAssets as runDownloadAssets } from './tools/download-assets'
 import { handleGetScreenshot as runGetScreenshot } from './tools/screenshot'
 import {
@@ -41,23 +43,36 @@ function isSceneNode(node: BaseNode | null): node is SceneNode {
 function resolveSingleNode(nodeId?: string): SceneNode {
   if (nodeId) {
     const node = figma.getNodeById(nodeId)
-    if (!isSceneNode(node) || !node.visible) {
+    if (!node) {
       throw createCodedError(
         TEMPAD_MCP_ERROR_CODES.NODE_NOT_VISIBLE,
-        'No visible node found for the provided nodeId.'
+        `Node "${nodeId}" does not exist in the current document.`
+      )
+    }
+    if (!isSceneNode(node)) {
+      throw createCodedError(
+        TEMPAD_MCP_ERROR_CODES.NODE_NOT_VISIBLE,
+        `Node "${nodeId}" exists but is not a supported scene node.`
+      )
+    }
+    if (!node.visible) {
+      throw createCodedError(
+        TEMPAD_MCP_ERROR_CODES.NODE_NOT_VISIBLE,
+        `Node "${nodeId}" exists but is hidden.`
       )
     }
     return node
   }
 
-  if (selection.value.length !== 1 || !selection.value[0].visible) {
+  const [selectedNode] = selection.value
+  if (selection.value.length !== 1 || !selectedNode?.visible) {
     throw createCodedError(
       TEMPAD_MCP_ERROR_CODES.INVALID_SELECTION,
       'Select exactly one visible node (or provide nodeId) to proceed.'
     )
   }
 
-  return selection.value[0]
+  return selectedNode
 }
 
 function resolveNodes(nodeIds?: string[]): SceneNode[] {
@@ -75,15 +90,11 @@ function resolveNodes(nodeIds?: string[]): SceneNode[] {
   return unique.map((nodeId) => resolveSingleNode(nodeId))
 }
 
-async function handleGetCode(args?: GetCodeParametersInput): Promise<GetCodeResult> {
-  return dispatchGetCode(args)
-}
-
 export type WindowGetCodeParametersInput = GetCodeParametersInput & {
   _unbounded?: boolean
 }
 
-async function dispatchGetCode(
+async function handleGetCode(
   args?: GetCodeParametersInput,
   runtimeOptions?: GetCodeRuntimeOptions
 ): Promise<GetCodeResult> {
@@ -94,7 +105,7 @@ async function dispatchGetCode(
 
 async function handleWindowGetCode(args?: WindowGetCodeParametersInput): Promise<GetCodeResult> {
   const { _unbounded, ...rest } = args ?? {}
-  return dispatchGetCode(rest, {
+  return handleGetCode(rest, {
     unbounded: _unbounded
   })
 }
@@ -146,8 +157,9 @@ async function resolveStructureRoots(nodeId?: string): Promise<SceneNode[] | nul
     return [resolveSingleNode(nodeId)]
   }
 
-  if (selection.value.length === 1 && selection.value[0].visible) {
-    return [selection.value[0]]
+  const [selected] = selection.value
+  if (selection.value.length === 1 && selected?.visible) {
+    return [selected]
   }
 
   return null
@@ -161,13 +173,17 @@ async function handleDownloadAssets(
   return runDownloadAssets(nodes, { defaultFormat, defaultScale })
 }
 
-export type MCPHandlers = {
-  get_code: (args?: GetCodeParametersInput) => Promise<GetCodeResult>
-  get_token_defs: (args?: GetTokenDefsParametersInput) => Promise<GetTokenDefsResult>
-  get_screenshot: (args?: GetScreenshotParametersInput) => Promise<GetScreenshotResult>
-  get_structure: (args?: GetStructureParametersInput) => Promise<GetStructureResult>
-  download_assets: (args?: DownloadAssetsParametersInput) => Promise<DownloadAssetsResult>
+export const MCP_TOOL_HANDLERS = {
+  apply_canvas: handleApplyCanvas,
+  get_code: handleGetCode,
+  get_design_system: handleGetDesignSystem,
+  get_token_defs: handleGetTokenDefs,
+  get_screenshot: handleGetScreenshot,
+  get_structure: handleGetStructure,
+  download_assets: handleDownloadAssets
 }
+
+export type MCPHandlers = typeof MCP_TOOL_HANDLERS
 
 export type TempadWindowHandlers = Omit<MCPHandlers, 'get_code'> & {
   get_code: (args?: WindowGetCodeParametersInput) => Promise<GetCodeResult>
@@ -179,23 +195,13 @@ declare global {
   }
 }
 
-export const MCP_TOOL_HANDLERS: MCPHandlers = {
-  get_code: handleGetCode,
-  get_token_defs: handleGetTokenDefs,
-  get_screenshot: handleGetScreenshot,
-  get_structure: handleGetStructure,
-  download_assets: handleDownloadAssets
-}
-
 export const WINDOW_TEMPAD_TOOL_HANDLERS: TempadWindowHandlers = {
   ...MCP_TOOL_HANDLERS,
   get_code: handleWindowGetCode
 }
 
-type McpToolName = keyof MCPHandlers
-
-function isMcpToolName(name: string): name is McpToolName {
-  return name in MCP_TOOL_HANDLERS
+function isMcpToolName(name: string): name is keyof MCPHandlers {
+  return Object.hasOwn(MCP_TOOL_HANDLERS, name)
 }
 
 export async function runMcpTool(name: string, args: unknown): Promise<unknown> {

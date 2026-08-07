@@ -1,7 +1,9 @@
 import type {
   DownloadAssetsResult,
+  ApplyCanvasResult,
   GetAssetsResult,
   GetCodeResult,
+  GetDesignSystemResult,
   GetScreenshotResult,
   GetStructureResult,
   GetTokenDefsResult
@@ -14,6 +16,11 @@ const ENCODER = new TextEncoder()
 export type ToolResponseContentBlock = {
   type: string
   text?: string
+  uri?: string
+  name?: string
+  description?: string
+  mimeType?: string
+  size?: number
 }
 
 export type ToolResponseLike = {
@@ -24,7 +31,9 @@ export type ToolResponseLike = {
 }
 
 export function utf8Bytes(value: unknown): number {
-  return ENCODER.encode(serializeUtf8Value(value)).length
+  const serialized =
+    typeof value === 'string' ? value : (JSON.stringify(value, null, 0) ?? 'undefined')
+  return ENCODER.encode(serialized).length
 }
 
 export function measureCallToolResultBytes(result: ToolResponseLike): number {
@@ -77,6 +86,52 @@ export function buildGetCodeToolResult(payload: GetCodeResult): ToolResponseLike
   }
 
   return buildTextToolResult(summary.join('\n'), payload)
+}
+
+export function buildGetDesignSystemToolResult(payload: GetDesignSystemResult): ToolResponseLike {
+  if (payload.details) {
+    return buildTextToolResult(
+      `Returned bounded ${payload.details.kind} definition ${payload.details.ref} from catalog ${payload.catalogId}.`,
+      payload
+    )
+  }
+  const summary = `Returned ${formatCount(payload.components.length, 'component')}, ${formatCount(payload.variables.length, 'variable')}, ${formatCount(payload.styles.length, 'style')}, ${formatCount(payload.collections.length, 'collection')}, and ${formatCount(payload.shaders?.length ?? 0, 'shader')} from catalog ${payload.catalogId}.`
+  const warnings = payload.warnings?.length ? `\n${payload.warnings.join('\n')}` : ''
+  const continuation =
+    payload.nextCursor === undefined
+      ? ''
+      : ` Continue this catalog with cursor ${payload.nextCursor} to inspect omitted resources.`
+  return buildTextToolResult(
+    `${summary}${warnings}\nRead structuredContent for deterministic short refs and component tags.${continuation} Read one bounded definition with this catalogId and a returned ref.`,
+    payload
+  )
+}
+
+export function buildApplyCanvasToolResult(payload: ApplyCanvasResult): ToolResponseLike {
+  const nodeChanges = {
+    created: payload.createdNodeIds.length,
+    updated: payload.updatedNodeIds.length,
+    removed: payload.removedNodeIds.length
+  }
+  const summary = `Applied ${formatCount(payload.mutationCount, 'canvas mutation')}: ${formatCount(nodeChanges.created, 'node')} created, ${formatCount(nodeChanges.updated, 'node')} updated, and ${formatCount(nodeChanges.removed, 'node')} removed.`
+  const verification = `Structural verification ${payload.verification.status}: ${formatCount(payload.verification.nodesChecked, 'node')} and ${formatCount(payload.verification.referencesChecked, 'native reference')} checked.`
+  const warnings = payload.verification.warnings.length
+    ? `\n${payload.verification.warnings.map(({ key, message }) => `${key ? `${key}: ` : ''}${message}`).join('\n')}`
+    : ''
+  const root = payload.rootRemoved
+    ? `Root node is absent: ${payload.rootNodeId}. Repeating the same assertion is safe.`
+    : `Root node: ${payload.rootNodeId}.`
+  const identities = payload.rootRemoved
+    ? ''
+    : '\nRead structuredContent.nodeIdsByKey before a follow-up update or component instance call.'
+  return buildTextToolResult(`${summary}\n${verification}${warnings}\n${root}${identities}`, {
+    rootNodeId: payload.rootNodeId,
+    ...(payload.rootRemoved ? { rootRemoved: true } : {}),
+    nodeIdsByKey: payload.nodeIdsByKey,
+    mutationCount: payload.mutationCount,
+    nodeChanges,
+    verification: payload.verification
+  })
 }
 
 export function buildGetStructureToolResult(payload: GetStructureResult): ToolResponseLike {
@@ -214,10 +269,23 @@ function formatTokenEntryValue(value: string | Record<string, string>): string {
 }
 
 export function buildGetScreenshotToolResult(payload: GetScreenshotResult): ToolResponseLike {
-  return buildTextToolResult(
-    `${describeScreenshot(payload)} - Download: ${payload.asset.url}`,
-    payload
-  )
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `${describeScreenshot(payload)}. Inspect the linked PNG for visual verification.`
+      },
+      {
+        type: 'resource_link',
+        uri: payload.asset.url,
+        name: `Figma screenshot ${payload.asset.hash}.png`,
+        description: `${payload.width}x${payload.height} rendered Figma node`,
+        mimeType: payload.asset.mimeType,
+        size: payload.asset.size
+      }
+    ],
+    structuredContent: payload
+  }
 }
 
 export function buildDownloadAssetsToolResult(payload: DownloadAssetsResult): ToolResponseLike {
@@ -317,14 +385,6 @@ function buildTextToolResult(text: string, structuredContent: unknown): ToolResp
     ],
     structuredContent
   }
-}
-
-function serializeUtf8Value(value: unknown): string {
-  if (typeof value === 'string') {
-    return value
-  }
-
-  return JSON.stringify(value, null, 0) ?? 'undefined'
 }
 
 function countOutlineNodes(nodes: GetStructureResult['roots']): number {

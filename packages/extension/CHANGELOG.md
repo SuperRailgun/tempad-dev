@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.21.0
+
+- Added native Figma canvas authoring through declarative `apply_canvas` results instead of
+  agent-generated Plugin API calls.
+- Added `get_design_system` for bounded discovery and exact lookup of accessible components,
+  variables, collections and modes, native styles, and shaders through stable short references.
+- Added safe create, update, and delete reconciliation against the latest canvas, with stable
+  managed identities, dependency preflight and rollback, one Undo boundary, no-op convergence,
+  structural verification, and identity recovery through `get_structure`.
+- Expanded authoring coverage across HTML and Tailwind utilities, native geometry and layout, rich
+  text, paints and effects, variables and styles, pages, components and variants, instances, Slots,
+  inline SVG, and local PNG/JPEG/GIF assets.
+- Added deterministic non-overlapping placement for independent creates, bounded read-only
+  screenshot validation, and compact field-level error feedback.
+- Added the `figma-canvas-authoring` skill to the Codex and Claude plugins and standalone agent
+  setup, alongside the existing `figma-design-to-code` skill.
+- Restricted canvas writes to editable Figma Design files and stabilized Auto Layout verification
+  after text reflow and native Figma setter updates.
+- Fixed freshly authored component instances inheriting the definition's managed identity, added
+  rollback survivor checks, isolated failed-attempt Undo from preceding successful applies, guarded
+  unrelated page roots against rollback corruption, and documented file-wide resource keys plus
+  canvas size and variable-scope constraints.
+
 ## 0.20.0
 
 - Hid Figma's inactive mode switcher in read-only files after its toolbar structure changed.
